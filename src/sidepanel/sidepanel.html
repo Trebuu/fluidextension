@@ -141,17 +141,15 @@
         <input id="connectorToken" type="password" placeholder="ftc_…" autocomplete="off" spellcheck="false" />
         <small>
           Per-character token from the FluidTalk dashboard — the token <em>is</em>
-          the character. <b>Shared by every platform:</b> one token already
-          carries a binding for each, so the same character runs everywhere.
+          the character.
         </small>
       </label>
 
       <hr class="rule" />
 
       <p class="hint">
-        Open a platform to set it up, then <b>Bind</b> it. <b>Only one platform
-        can be bound</b>, and the bound one is the only one worked — binding
-        another unbinds the first. Settings are kept for all of them.
+        <b>Only one platform can be bound</b> — binding another unbinds the
+        first. Every platform keeps its own settings.
       </p>
 
       <!-- One row per platform, built in JS. The form below is MOVED into
@@ -175,7 +173,6 @@
         <span>Signed in as</span>
         <!-- The handle is its own node so painting it cannot wipe the badge. -->
         <p class="detected"><b id="ownUsername">—</b><span class="pill">detected</span></p>
-        <small>Read from the page and sent as <code>own_username</code>, so FluidTalk knows which account got the DM.</small>
       </div>
 
       <!-- ── WHEN THIS ACCOUNT IS AWAKE ─────────────────────────────────────
@@ -204,7 +201,7 @@
           <input id="scheduleJitterMin" type="number" min="0" max="60" step="1" />
           <span class="unit">min of the window</span>
         </div>
-        <small>Worked out from this account and the window rather than rolled, so a fleet sharing one preset does not all wake on the same second.</small>
+        <small>Derived from the account, so a fleet on one preset does not wake together.</small>
         <!-- The readout comes from the WORKER, not from a calendar in here:
              "opens Monday 09:04" has to be the sentence the tick is acting on. -->
         <div class="next" id="schedule-next" data-live="false">
@@ -225,12 +222,12 @@
           <input id="newThreadsPerDay" type="number" min="0" step="1" />
         </label>
       </div>
-      <small>Counts only threads we have never replied in. Answering someone already talking to us is never throttled.</small>
+      <small>Counts only threads we have never replied in.</small>
 
       <label class="field">
         <span>Ignore threads older than</span>
         <input id="maxThreadAgeDays" type="number" min="0" step="1" />
-        <small>Days. 0 = no limit. Read from the inbox timestamp, so it is language-dependent; an age we cannot parse is not filtered.</small>
+        <small>Days. 0 = no limit. An age we cannot read is not filtered.</small>
       </label>
 
       <div class="field row">
@@ -243,7 +240,7 @@
           <input id="maxReplyDelayMs" type="number" min="0" step="1" />
         </label>
       </div>
-      <small>Waited before the first bubble, so a reply never lands instantly.</small>
+      <small>So a reply never lands instantly.</small>
 
       <hr class="rule" />
 
@@ -274,9 +271,8 @@
         <span>
           <span class="lab">Answer media we can't open</span>
           <span class="sub">
-            A view-once photo never reaches the browser. On, the character is
-            told <em>"sent a disappearing photo"</em> and answers naturally.
-            Off, the thread is skipped. That phrase is stored as their message.
+            Never reaches the browser. On, the character is told
+            <em>"sent a disappearing photo"</em>; off, the thread is skipped.
           </span>
         </span>
         <input id="describeUnreadable" type="checkbox" />
@@ -307,8 +303,8 @@
         <span>
           <span class="lab">Comment on posts</span>
           <span class="sub">
-            Public — everyone who sees the post sees this. Also needs Comments
-            turned on for the character in FluidTalk, which is off by default.
+            Public — everyone who sees the post sees this. Also needs Comments on
+            for the character in FluidTalk.
           </span>
         </span>
         <input id="commentsEnabled" type="checkbox" />
@@ -334,14 +330,14 @@
       <label class="check">
         <span>
           <span class="lab">Skip ads</span>
-          <span class="sub">Sponsored posts and paid partnerships. An ad looks like an ordinary post apart from one line of label.</span>
+          <span class="sub">Sponsored posts and paid partnerships.</span>
         </span>
         <input id="skipSponsored" type="checkbox" />
       </label>
       <label class="field">
         <span>Posts to scan per run</span>
         <input id="feedScanLimit" type="number" min="1" step="1" />
-        <small>The feed paints two or three posts and loads the rest as it scrolls, so a bigger number means more scrolling.</small>
+        <small>A bigger number means more scrolling.</small>
       </label>
 
       <div class="actions">
@@ -359,9 +355,8 @@
         <span>
           <span class="lab">Answer replies to my comments</span>
           <span class="sub">
-            When someone replies under a comment we left, reply back in the same
-            thread. FluidTalk decides whether to answer, nudge them to the DMs,
-            or bow out.
+            Reply under a comment we left. FluidTalk decides whether to answer,
+            nudge them to the DMs, or bow out.
           </span>
         </span>
         <input id="commentRepliesEnabled" type="checkbox" />
@@ -445,8 +440,7 @@
            rebinds the extension — both things somebody should know before
            pressing Load. -->
       <p class="hint">
-        A preset is this whole setup — the token, which platform is bound, and
-        every platform's settings. Save one here, then <b>Export</b> it to set up
+        A preset is this whole setup. Save one, then <b>Export</b> it to set up
         another browser profile without filling the form in again.
       </p>
 

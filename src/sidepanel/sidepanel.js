@@ -570,14 +570,20 @@ function paintPlatforms(info) {
 
         // Say what binding will MEAN, where the button is, rather than leaving
         // it to be inferred from whether anything starts happening.
+        //
+        // NAMES ONLY, NO RULE. The hint above the list already states that one
+        // platform can be bound and that settings are kept for all of them —
+        // repeating it here put the same sentence on screen twice the moment a
+        // module was opened. What this line adds is the two ACTUAL names, which
+        // the generic rule cannot give.
         const note = document.createElement("p");
         note.className = "phint";
         if (p.configured) {
-          note.textContent = `${p.label} is the one platform being worked. Unbinding stops it; its settings are kept.`;
+          note.textContent = `Unbinding stops it.`;
         } else if (heldBy) {
-          note.textContent = `Only one platform runs at a time — binding ${p.label} unbinds ${heldBy.label}. Settings below are saved either way.`;
+          note.textContent = `Binding ${p.label} unbinds ${heldBy.label}.`;
         } else {
-          note.textContent = `Nothing is bound, so nothing is running. Settings below are saved either way.`;
+          note.textContent = `Nothing is bound, so nothing is running.`;
         }
         body.append(note);
 
