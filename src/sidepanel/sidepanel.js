@@ -878,43 +878,40 @@ function paintQuota(quotas) {
  * its own leaves the button saying Start.
  */
 /**
- * What Start will actually do, given the current settings.
+ * What Start will actually do, given the current settings — as a LIST, not
+ * prose.
  *
- * Built rather than fixed, because the honest sentence changes: it used to say
- * "never starts a conversation", which stopped being true the moment outreach
- * was added. And Start sends whatever the Reply-automatically switch says —
- * that switch governs the unattended watcher, not this button — so the hint
- * has to say so or the two controls look like they contradict each other.
+ * It used to be one sentence per enabled pass. With the stock settings that is
+ * five or six sentences, and the run bar clamps to two lines, so it truncated
+ * mid-word: "…Nudges quiet leads (up to 3). Never starts a". A description of
+ * the run that stops before the end is worse than a short one, and this is the
+ * one place anybody checks before pressing Start.
  *
- * EVERY CLAUSE IS GATED ON THE CAPABILITY TOO, not just on the setting. The
+ * Naming the passes in run order does the same job in a fraction of the width,
+ * and the clause that mattered — that outreach messages people who never wrote
+ * to you — survives as the words "cold DMs" rather than a sentence nobody got
+ * to the end of.
+ *
+ * EVERY ENTRY IS GATED ON THE CAPABILITY TOO, not just on the setting. The
  * settings are shared across platforms, so on WhatsApp this promised to accept
  * message requests, answer comment replies, comment on a feed and cold-DM
  * followers — four passes the worker skips by declaration and that platform
- * does not have. A description of a run that cannot happen is worse than none:
- * it is the one place the user checks before pressing Start.
+ * does not have.
  */
 function idleHint() {
   const can = (c) => !state.platform || state.platform.capabilities?.includes(c);
-  const parts = ["Sends replies where their message is the last one."];
-  if (state.settings?.acceptRequests && can("requests")) parts.push("Accepts message requests.");
-  // Answering replies is listed BEFORE commenting, because that is the order it
-  // runs in — and because the two are separately switchable, so a run that only
-  // answers replies has to describe itself correctly.
-  if (state.settings?.commentRepliesEnabled && can("commentReplies")) parts.push("Answers replies to my comments.");
-  if (state.settings?.commentsEnabled && can("comments")) {
-    const where = { feed: "in my feed", followers: "by my followers", both: "in my feed and by my followers" };
-    parts.push(`Comments on posts ${where[state.settings.commentSources] ?? ""}.`);
+  const s = state.settings ?? {};
+  // Run order, which is also the order the worker performs them in.
+  const parts = ["replies"];
+  if (s.acceptRequests && can("requests")) parts.push("requests");
+  if (s.commentRepliesEnabled && can("commentReplies")) parts.push("comment replies");
+  if (s.commentsEnabled && can("comments")) parts.push("comments");
+  if (s.followupsEnabled && can("followups")) {
+    const n = parseStages(s.followupStagesHours).length;
+    if (n) parts.push(`follow-ups ×${n}`);
   }
-  if (state.settings?.followupsEnabled && can("followups")) {
-    const n = parseStages(state.settings.followupStagesHours).length;
-    if (n) parts.push(`Nudges quiet leads (up to ${n}).`);
-  }
-  parts.push(
-    state.settings?.outreachEnabled && can("outreach")
-      ? "Then cold-DMs followers who have never written to you."
-      : "Never starts a conversation.",
-  );
-  return parts.join(" ");
+  if (s.outreachEnabled && can("outreach")) parts.push("cold DMs");
+  return `Start: ${parts.join(" · ")}`;
 }
 
 function paintSweep(sweep) {
