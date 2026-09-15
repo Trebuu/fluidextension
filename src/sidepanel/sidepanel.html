@@ -406,6 +406,28 @@
         <button class="btn" id="diagnose">Diagnose page</button>
       </div>
       <pre class="probe" id="probe" hidden></pre>
+
+      <hr class="rule" />
+
+      <!-- ── where to find us ───────────────────────────────────────────────
+           ANCHORS, NOT BUTTONS. A side panel cannot navigate itself away from
+           the panel — it IS the extension's page — so these carry
+           target="_blank" and open a normal tab. `rel="noopener"` because a
+           page opened from here would otherwise get a handle on the panel via
+           window.opener.
+           No icons: a wrong SVG path renders as a blob, and three words read
+           faster than three logos at this size. -->
+      <div class="field">
+        <span>Community</span>
+        <div class="actions">
+          <a class="btn" href="https://discord.gg/PXUeVtPV6"
+             target="_blank" rel="noopener noreferrer">Discord</a>
+          <a class="btn" href="https://t.me/+7TmYLy0KKqZiZDE0"
+             target="_blank" rel="noopener noreferrer">Group chat</a>
+          <a class="btn" href="https://t.me/fluidvip"
+             target="_blank" rel="noopener noreferrer">Updates</a>
+        </div>
+      </div>
     </section>
 
     <!-- ── Presets ───────────────────────────────────────────────────────── -->

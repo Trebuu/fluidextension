@@ -371,14 +371,23 @@ function paintCapabilities(platform) {
     // for one the adapter implements and we have chosen not to run: saying
     // "WhatsApp has no follow-ups" would be a plain untruth, and it would hide
     // the reason from the person most likely to want to switch it back on.
-    const blocked = platform?.blockedCapabilities?.[cap] ?? null;
-    const why = blocked ?? `${platform.label} has no ${CAP_LABELS[cap] ?? cap}.`;
+    // ⚠ LAZY, because `platform` can be null.
+    //
+    // `off` is false whenever there is no platform, so the sentence is never
+    // shown then — but building it eagerly still read `platform.label` and
+    // threw, and the throw came out of `paintCapabilities` inside
+    // `refreshAll`, which abandoned the rest of the repaint. The original code
+    // only ever built this string inside the `off` branch, which is why it
+    // never hit this; the blocked-reason lookup moved it outward.
+    const why = () =>
+      platform?.blockedCapabilities?.[cap] ??
+      `${platform?.label ?? "This platform"} has no ${CAP_LABELS[cap] ?? cap}.`;
     let note = block.querySelector(".cap-note");
     if (off && !note) {
-      note = Object.assign(document.createElement("p"), { className: "cap-note", textContent: why });
+      note = Object.assign(document.createElement("p"), { className: "cap-note", textContent: why() });
       block.prepend(note);
     } else if (off && note) {
-      note.textContent = why;
+      note.textContent = why();
     } else if (note) {
       note.remove();
     }
