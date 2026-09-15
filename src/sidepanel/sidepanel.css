@@ -721,3 +721,54 @@ code { font:500 10.5px/1.4 var(--mono); color:var(--ink2); background:var(--fiel
   .btn, .tab, .pill, .meter, .budget .meter > * { transition:none; }
   .btn:active:not(:disabled) { transform:none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE INFO AFFORDANCE
+   ───────────────────────────────────────────────────────────────────────────
+   A label that needs a sentence to be understood gets an ⓘ instead of the
+   sentence. The text lives in `data-tip` and is painted on hover and on
+   FOCUS — focus is not optional here, it is the only way the copy is reachable
+   without a mouse.
+
+   WHAT DOES NOT GO BEHIND AN ICON: anything that reaches another person.
+   Outreach, public comments and a preset carrying your token keep their line
+   on the surface, because a warning you have to hover to find is not a
+   warning. Everything else — mechanism, definitions, "what does this field
+   mean" — is one hover away.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.info {
+  display:inline-grid; place-items:center; position:relative;
+  width:14px; height:14px; margin-left:5px; vertical-align:-2px;
+  border:0; padding:0; border-radius:50%; cursor:help;
+  background:color-mix(in srgb,var(--ink) 14%,transparent);
+  color:var(--ink2); font:600 9.5px/1 var(--body);
+  transition:background var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.info::before { content:"i"; }
+/* :focus, NOT :focus-visible. A pointer or a script focusing the icon does
+   NOT satisfy :focus-visible — it is a keyboard heuristic — so a tap would
+   have opened nothing at all and only a mouse hover would have worked.
+   Measured: getComputedStyle(icon, "::after").visibility stayed "hidden"
+   after .focus(). :focus covers keyboard, pointer and tap alike. */
+.info:hover, .info:focus { background:var(--acc); color:var(--ink-inv); outline:none; }
+
+/* The bubble. `width:max-content` with a cap so a short tip is short, and
+   `overflow-x:hidden` on the panel means it must never reach past the right
+   edge — 230px clears it at the narrowest panel Chrome allows. */
+.info::after {
+  content:attr(data-tip);
+  position:absolute; top:calc(100% + 7px); left:-6px; z-index:3;
+  width:max-content; max-width:230px;
+  padding:7px 9px; border-radius:var(--r-xs);
+  background:#1b1826; border:1px solid var(--hair);
+  box-shadow:0 10px 26px -8px rgba(0,0,0,.8);
+  font:450 10.5px/1.45 var(--body); letter-spacing:0; color:var(--ink2);
+  text-align:left; white-space:normal; cursor:auto;
+  opacity:0; visibility:hidden; transform:translateY(-3px);
+  transition:opacity var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), visibility var(--dur-1);
+}
+.info:hover::after, .info:focus::after {
+  opacity:1; visibility:visible; transform:none;
+}
+@media (prefers-reduced-motion:reduce){ .info, .info::after { transition:none; } }

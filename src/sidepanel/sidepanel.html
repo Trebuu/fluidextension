@@ -137,18 +137,11 @@
            account alone, and the token belongs to all of them. Position is the
            cheapest way to say so. -->
       <label class="field">
-        <span>Character token</span>
+        <span>Character token <button type="button" class="info" aria-label="From the FluidTalk dashboard. The token IS the character." data-tip="From the FluidTalk dashboard. The token IS the character."></button></span>
         <input id="connectorToken" type="password" placeholder="ftc_…" autocomplete="off" spellcheck="false" />
-        <small>
-          From the FluidTalk dashboard — it <em>is</em> the character.
-        </small>
       </label>
 
       <hr class="rule" />
-
-      <p class="hint">
-        <b>One platform at a time</b> — binding another unbinds the first.
-      </p>
 
       <!-- One row per platform, built in JS. The form below is MOVED into
            whichever row is open, so there is exactly one copy of it and it can
@@ -195,11 +188,10 @@
         <div class="windows" id="schedule-windows"></div>
         <hr class="rule" />
         <div class="jrow">
-          <label for="scheduleJitterMin">Start within</label>
+          <label for="scheduleJitterMin">Start within <button type="button" class="info" aria-label="Derived from the account, so a fleet sharing one preset does not all wake together." data-tip="Derived from the account, so a fleet sharing one preset does not all wake together."></button></label>
           <input id="scheduleJitterMin" type="number" min="0" max="60" step="1" />
           <span class="unit">min of the window</span>
         </div>
-        <small>So a fleet on one preset does not wake together.</small>
         <!-- The readout comes from the WORKER, not from a calendar in here:
              "opens Monday 09:04" has to be the sentence the tick is acting on. -->
         <div class="next" id="schedule-next" data-live="false">
@@ -212,7 +204,7 @@
 
       <div class="field row">
         <label class="grow">
-          <span>New / hour</span>
+          <span>New / hour <button type="button" class="info" aria-label="Counts only threads we have never replied in. Answering someone already talking to us is never throttled." data-tip="Counts only threads we have never replied in. Answering someone already talking to us is never throttled."></button></span>
           <input id="newThreadsPerHour" type="number" min="0" step="1" />
         </label>
         <label class="grow">
@@ -220,12 +212,10 @@
           <input id="newThreadsPerDay" type="number" min="0" step="1" />
         </label>
       </div>
-      <small>Only threads we have never replied in.</small>
 
       <label class="field">
-        <span>Ignore threads older than</span>
+        <span>Ignore threads older than <button type="button" class="info" aria-label="Days. 0 means no limit." data-tip="Days. 0 means no limit."></button></span>
         <input id="maxThreadAgeDays" type="number" min="0" step="1" />
-        <small>Days. 0 = no limit.</small>
       </label>
 
       <div class="field row">
@@ -238,14 +228,13 @@
           <input id="maxReplyDelayMs" type="number" min="0" step="1" />
         </label>
       </div>
-      <small>So a reply never lands instantly.</small>
 
       <hr class="rule" />
 
 <div data-capability="requests">
       <label class="check">
         <span>
-          <span class="lab">Accept message requests</span>
+          <span class="lab">Accept message requests <button type="button" class="info" aria-label="Moves a pending request into the inbox so it can be answered." data-tip="Moves a pending request into the inbox so it can be answered."></button></span>
           <span class="sub" id="requests-sub"></span>
         </span>
         <input id="acceptRequests" type="checkbox" />
@@ -267,10 +256,7 @@
 
       <label class="check">
         <span>
-          <span class="lab">Answer media we can't open</span>
-          <span class="sub">
-            Told <em>"sent a disappearing photo"</em>; off, skipped.
-          </span>
+          <span class="lab">Answer media we can't open <button type="button" class="info" aria-label="A view-once photo never reaches the browser. On, the character is told “sent a disappearing photo”; off, the thread is skipped." data-tip="A view-once photo never reaches the browser. On, the character is told “sent a disappearing photo”; off, the thread is skipped."></button></span>
         </span>
         <input id="describeUnreadable" type="checkbox" />
       </label>
@@ -281,7 +267,6 @@
       <label class="check">
         <span>
           <span class="lab">Follow up when they go quiet</span>
-          <span class="sub">Nudges leads who went quiet.</span>
         </span>
         <input id="followupsEnabled" type="checkbox" />
       </label>
@@ -325,15 +310,13 @@
       </div>
       <label class="check">
         <span>
-          <span class="lab">Skip ads</span>
-          <span class="sub">Sponsored posts and paid partnerships.</span>
+          <span class="lab">Skip ads <button type="button" class="info" aria-label="Sponsored posts and paid partnerships." data-tip="Sponsored posts and paid partnerships."></button></span>
         </span>
         <input id="skipSponsored" type="checkbox" />
       </label>
       <label class="field">
         <span>Posts to scan per run</span>
         <input id="feedScanLimit" type="number" min="1" step="1" />
-        <small>More posts, more scrolling.</small>
       </label>
 
       <div class="actions">
@@ -349,10 +332,7 @@
       <div data-capability="commentReplies">
       <label class="check">
         <span>
-          <span class="lab">Answer replies to my comments</span>
-          <span class="sub">
-            FluidTalk answers, nudges to the DMs, or bows out.
-          </span>
+          <span class="lab">Answer replies to my comments <button type="button" class="info" aria-label="FluidTalk decides whether to answer, nudge them to the DMs, or bow out." data-tip="FluidTalk decides whether to answer, nudge them to the DMs, or bow out."></button></span>
         </span>
         <input id="commentRepliesEnabled" type="checkbox" />
       </label>
@@ -406,8 +386,7 @@
 
       <label class="check">
         <span>
-          <span class="lab">Pause between threads</span>
-          <span class="sub">Off — move straight to the next.</span>
+          <span class="lab">Pause between threads <button type="button" class="info" aria-label="Waits between conversations instead of moving straight on." data-tip="Waits between conversations instead of moving straight on."></button></span>
         </span>
         <input id="pauseBetweenThreads" type="checkbox" />
       </label>
@@ -434,9 +413,6 @@
       <!-- WHAT A PRESET IS, in one line, because it carries a token and it
            rebinds the extension — both things somebody should know before
            pressing Load. -->
-      <p class="hint">
-        The whole setup, <b>Export</b>ed to another browser profile.
-      </p>
 
       <!-- The fleet file, when there is one. Hidden on an ordinary install:
            most people have one browser and this would be noise. -->

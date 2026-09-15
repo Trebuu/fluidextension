@@ -1687,6 +1687,28 @@ chrome.tabs.onRemoved.addListener(refreshAll);
 chrome.tabs.onCreated.addListener(refreshAll);
 
 /**
+ * An ⓘ inside a <label> must not operate the label's control.
+ *
+ * A label forwards any click inside it to its input, so pressing the info
+ * button on "Skip ads" would toggle Skip ads — the one interaction on the
+ * panel where reading about a switch flips it. The tooltip itself is pure CSS
+ * (:hover / :focus-visible on data-tip), so the button needs no behaviour of
+ * its own at all; it only needs to not be a label click.
+ *
+ * Delegated, because the platform rows and their fields are rebuilt on every
+ * repaint and per-node listeners would be lost with them.
+ */
+document.addEventListener("click", (e) => {
+  const info = e.target.closest?.(".info");
+  if (!info) return;
+  e.preventDefault();
+  e.stopPropagation();
+  // Tap targets have no hover, so a tap parks focus on the icon instead —
+  // which is the same state :focus-visible paints the tooltip for.
+  info.focus();
+});
+
+/**
  * Let the glass see the pointer.
  *
  * ⚠ `data-lg-live` ON ITS OWN DOES NOTHING. It marks a host as wanting a live
