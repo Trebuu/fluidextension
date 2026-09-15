@@ -7,6 +7,8 @@ A Chrome (MV3) extension that answers direct messages on **Instagram, Telegram
 Web and WhatsApp Web** with a [FluidTalk](https://talk.fluidvip.com) character,
 driven from a side panel.
 
+![The FluidExtension side panel answering an Instagram DM](docs/hero.png)
+
 ## What it does, and what is on by default
 
 It is an automation tool, not a drafting aid: with stock settings it acts on its
@@ -42,6 +44,19 @@ and the platforms change their DOM without warning — which is a defect class t
 code handles but cannot eliminate. **You are responsible for what the account you
 attach it to does to other people.** Use it on accounts you own and can afford to
 lose, and treat the rate caps as the floor of good behaviour, not a target.
+
+## The panel
+
+![Inbox, Settings and Activity tabs of the side panel](docs/panels.png)
+
+Four tabs. **Inbox** is the thread on screen plus what is left in each budget;
+**Settings** holds the token, the detected account and the week; **Presets**
+exports and applies a configuration across a fleet; **Activity** is the log —
+every send, skip and refusal with its reason, which is what makes a quiet run
+diagnosable instead of mysterious.
+
+<sub>Screenshots are the real panel rendered against sample data — no real
+account or conversation appears in them.</sub>
 
 ## How it fits together
 
