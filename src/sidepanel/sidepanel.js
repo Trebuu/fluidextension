@@ -1703,10 +1703,92 @@ document.addEventListener("click", (e) => {
   if (!info) return;
   e.preventDefault();
   e.stopPropagation();
-  // Tap targets have no hover, so a tap parks focus on the icon instead —
-  // which is the same state :focus-visible paints the tooltip for.
+  // Tap targets have no hover, so a tap parks focus on the icon instead.
   info.focus();
 });
+
+/**
+ * Place the tooltip so it is always fully on screen.
+ *
+ * MEASURED AFTER THE TEXT IS IN, never assumed: the bubble's height depends on
+ * how many lines the tip wraps to at this panel width, and that is not knowable
+ * until it has the text. So it is filled, laid out, measured, and only then
+ * positioned.
+ *
+ * Both axes are clamped, and for a good reason each:
+ *  - HORIZONTAL. A tip on an icon near the right edge used to run off the side,
+ *    where the panel's `overflow-x:hidden` simply cut it in half. It is now
+ *    pinned to whichever edge it would have crossed.
+ *  - VERTICAL. Below the icon is the default, but an icon in the last rows of a
+ *    long Settings tab has no room underneath, so the bubble flips above it.
+ *    If it fits in neither direction — a very long tip on a short panel — it
+ *    is clamped to the top and allowed to end where it ends, because a bubble
+ *    with its first line visible beats one positioned perfectly off-screen.
+ */
+const PAD = 8;
+const tipEl = (() => {
+  const el = document.createElement("div");
+  el.id = "tip";
+  el.setAttribute("role", "tooltip");
+  el.hidden = true;
+  // A direct child of <body>: `position:fixed` stops being fixed inside a
+  // transformed ancestor, and the panels animate on transform.
+  document.body.append(el);
+  return el;
+})();
+
+function showTip(info) {
+  const text = info.dataset.tip;
+  if (!text) return;
+  tipEl.textContent = text;
+  tipEl.hidden = false;
+
+  const r = info.getBoundingClientRect();
+  const t = tipEl.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+
+  // Preferred: just below the icon, left edges roughly aligned.
+  let left = r.left - 6;
+  let top = r.bottom + 7;
+
+  // Flip above only if it ACTUALLY FITS there. Testing `above >= PAD` alone
+  // was the bug: an icon scrolled past the bottom of the panel produces a
+  // large positive `above` that passes that test and is still off-screen, so
+  // the bubble was placed up to 1147px below the fold.
+  const fitsBelow = top + t.height <= vh - PAD;
+  const above = r.top - t.height - 7;
+  const fitsAbove = above >= PAD && above + t.height <= vh - PAD;
+  if (!fitsBelow && fitsAbove) top = above;
+
+  // Then clamp both axes unconditionally. This is what makes "always on
+  // screen" an invariant rather than a consequence of the branches above
+  // happening to cover every case — including an icon that is not in view at
+  // all, which nothing else here rules out.
+  left = Math.max(PAD, Math.min(left, vw - t.width - PAD));
+  top = Math.max(PAD, Math.min(top, vh - t.height - PAD));
+
+  tipEl.style.left = `${Math.round(left)}px`;
+  tipEl.style.top = `${Math.round(top)}px`;
+  tipEl.dataset.show = "1";
+}
+
+function hideTip() {
+  delete tipEl.dataset.show;
+  tipEl.hidden = true;
+}
+
+for (const [on, fn] of [
+  ["pointerover", (e) => { const i = e.target.closest?.(".info"); if (i) showTip(i); }],
+  ["pointerout", (e) => { if (e.target.closest?.(".info")) hideTip(); }],
+  ["focusin", (e) => { const i = e.target.closest?.(".info"); if (i) showTip(i); }],
+  ["focusout", (e) => { if (e.target.closest?.(".info")) hideTip(); }],
+]) {
+  document.addEventListener(on, fn);
+}
+// A tip anchored to an icon that has scrolled is a tip pointing at nothing.
+document.addEventListener("scroll", hideTip, true);
+addEventListener("resize", hideTip);
 
 /**
  * Let the glass see the pointer.

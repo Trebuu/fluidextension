@@ -756,19 +756,26 @@ code { font:500 10.5px/1.4 var(--mono); color:var(--ink2); background:var(--fiel
 /* The bubble. `width:max-content` with a cap so a short tip is short, and
    `overflow-x:hidden` on the panel means it must never reach past the right
    edge — 230px clears it at the narrowest panel Chrome allows. */
-.info::after {
-  content:attr(data-tip);
-  position:absolute; top:calc(100% + 7px); left:-6px; z-index:3;
-  width:max-content; max-width:230px;
+/* THE BUBBLE IS A SINGLE FIXED ELEMENT, not a pseudo on the icon.
+   A ::after lives inside the scrolling panel, and the panel is
+   `overflow-x:hidden` — so a tip on an icon near the right edge was clipped,
+   and one near the bottom was cut off by the scroll box. Nothing in CSS can
+   flip a pseudo-element to the other side when it would not fit.
+   `position:fixed` escapes the clip entirely, and #tip is measured and
+   clamped to the viewport by `placeTip` in sidepanel.js.
+   ⚠ fixed is only truly fixed with no transformed ancestor — #tip is a direct
+   child of <body> for exactly that reason. */
+#tip {
+  position:fixed; z-index:9; left:0; top:0;
+  max-width:min(260px, 100vw - 16px);
   padding:7px 9px; border-radius:var(--r-xs);
   background:#1b1826; border:1px solid var(--hair);
   box-shadow:0 10px 26px -8px rgba(0,0,0,.8);
   font:450 10.5px/1.45 var(--body); letter-spacing:0; color:var(--ink2);
-  text-align:left; white-space:normal; cursor:auto;
-  opacity:0; visibility:hidden; transform:translateY(-3px);
-  transition:opacity var(--dur-1) var(--ease), transform var(--dur-1) var(--ease), visibility var(--dur-1);
+  text-align:left; white-space:normal; pointer-events:none;
+  opacity:0; transform:translateY(-3px);
+  transition:opacity var(--dur-1) var(--ease), transform var(--dur-1) var(--ease);
 }
-.info:hover::after, .info:focus::after {
-  opacity:1; visibility:visible; transform:none;
-}
+#tip[data-show="1"] { opacity:1; transform:none; }
+@media (prefers-reduced-motion:reduce){ #tip { transition:none; } }
 @media (prefers-reduced-motion:reduce){ .info, .info::after { transition:none; } }
