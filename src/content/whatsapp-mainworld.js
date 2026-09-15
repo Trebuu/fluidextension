@@ -247,6 +247,39 @@
     }
   }
 
+  /**
+   * What to call this chat in a list.
+   *
+   * ⚠ `chat.formattedTitle` IS THE PHONE NUMBER for a LID chat whose contact
+   * card has not been rendered yet — which is every chat in a freshly synced
+   * list. Instagram's official account listed as a 15-digit number and only
+   * became "Instagram" once the thread was opened, which made a correctly
+   * skipped thread look like one the extension had failed to recognise.
+   *
+   * The name is on the CONTACT and is there the whole time: `verifiedName` is
+   * the green-tick name ("Instagram"), `pushname` is what an ordinary person
+   * set for themselves. Preferring them costs nothing and makes the list say
+   * what the thread actually is.
+   *
+   * `||` rather than `??` on purpose: these fields are "" when unset, not null.
+   */
+  function titleFor(chat, { Contact }) {
+    const jid = chat?.id?._serialized ?? null;
+    let contact = null;
+    try {
+      contact = modelsOf(Contact).find((x) => x.id?._serialized === jid) ?? null;
+    } catch {
+      contact = null;
+    }
+    return (
+      contact?.verifiedName ||
+      contact?.pushname ||
+      chat?.name ||
+      chat?.formattedTitle ||
+      null
+    );
+  }
+
   function isBot(jid, { BotProfile }) {
     if (META_AI_JIDS.has(jid)) return true;
     try {
@@ -383,7 +416,7 @@
           label: c.id?._serialized ?? null,
           jid: c.id?._serialized ?? null,
           handle: handleForJid(c.id?._serialized, mods),
-          title: c.name ?? c.formattedTitle ?? null,
+          title: titleFor(c, mods),
           unread: c.unreadCount ?? 0,
           at: c.t ? c.t * 1000 : null,
           refusal: refusalFor(c, mods, own),
