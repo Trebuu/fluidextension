@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a capability or a change in behaviour
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, rather than the solution — it often changes the answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which platforms would this touch?
+      multiple: true
+      options:
+        - Instagram
+        - Telegram Web
+        - WhatsApp Web
+        - The side panel / settings
+        - Fleet presets
+
+  - type: textarea
+    id: deliberate
+    attributes:
+      label: Does this change something the README calls deliberate?
+      description: >
+        A few behaviours are fixed on purpose — the pinned `apiBase`, detecting
+        rather than typing the signed-in account, the cap counting only
+        never-answered threads, and follow-up stages being independent windows.
+        CONTRIBUTING.md lists them. If your request touches one, say why the
+        current reasoning does not hold for your case.

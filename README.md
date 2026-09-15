@@ -1,5 +1,8 @@
 # FluidExtension
 
+[![CI](https://github.com/Trebuu/fluidextension/actions/workflows/ci.yml/badge.svg)](https://github.com/Trebuu/fluidextension/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A Chrome (MV3) extension that answers direct messages on **Instagram, Telegram
 Web and WhatsApp Web** with a [FluidTalk](https://talk.fluidvip.com) character,
 driven from a side panel.
@@ -283,6 +286,15 @@ Two things about this codebase that cost real debugging time:
   browser.** `chrome.runtime.reload()` from any extension page re-reads from
   disk. Check the artifact by fetching the extension's own source for a string
   you just wrote, not by trusting that a restart re-read the folder.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — there is no build step, so a clone is a
+dev environment. It also lists the two traps that reliably cost an afternoon
+(`node --check` lying about the worker, and a stale worker in a fresh browser)
+and the behaviours that are deliberate rather than accidental.
+
+Security issues: please report privately, see [SECURITY.md](SECURITY.md).
 
 ## License
 

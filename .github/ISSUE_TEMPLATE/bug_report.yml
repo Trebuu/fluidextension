@@ -1,0 +1,101 @@
+name: Bug report
+description: Something behaves differently from what the README says
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste a connector token, a screenshot of one, or a real
+        conversation.** Redact handles and message text.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Instagram
+        - Telegram Web
+        - WhatsApp Web
+        - Not platform-specific
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the side panel on …
+        2. Press …
+        3. …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: path
+    attributes:
+      label: Which path was running?
+      description: >
+        There are three ways a message goes out, and they fail differently:
+        the panel's Send button, a sweep started with Chat → Start, and the
+        automatic reply to a new inbound message (autoSend).
+      options:
+        - Panel Send button
+        - Sweep (Chat → Start)
+        - Automatic reply to an inbound message
+        - Follow-ups
+        - Comment replies
+        - Outreach
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnose page output
+      description: >
+        For anything where a selector may have stopped matching, **Settings →
+        Diagnose page** reports what each selector actually found. Paste it
+        here — it is usually the whole answer. Redact any handles.
+      render: text
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Panel log
+      description: Relevant lines from the panel's log. Redact handles and message text.
+      render: text
+
+  - type: input
+    id: chrome
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 131, Edge 131, Brave …
+    validations:
+      required: true
+
+  - type: input
+    id: commit
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0, or the commit SHA you loaded
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have not included a connector token or any real conversation content
+          required: true
+        - label: >
+            If the extension seemed dead entirely, I reloaded it from
+            chrome://extensions and confirmed the problem survives

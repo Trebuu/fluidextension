@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # No install step: the extension has no dependencies and no build.
+      - name: Tests
+        run: |
+          for f in scripts/test-*.mjs; do
+            echo "── $f"
+            node "$f"
+          done
+
+      # The service worker and lib/ are ES modules. `node --check` EXITS 0 on a
+      # hard SyntaxError in a module file, so it is not a usable oracle here —
+      # the module form is. A parse failure in background.js kills the whole
+      # extension backend, and a dead MV3 worker hangs rather than erroring.
+      - name: Parse — ES modules
+        run: |
+          for f in src/background.js src/lib/*.js; do
+            echo "── $f"
+            node --input-type=module --check < "$f"
+          done
+
+      # Content scripts and the side panel are classic scripts, so the plain
+      # form is correct for these.
+      - name: Parse — classic scripts
+        run: |
+          for f in src/content/*.js src/sidepanel/sidepanel.js src/vendor/lg-core.js; do
+            echo "── $f"
+            node --check "$f"
+          done
+
+      - name: Manifest resolves
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, existsSync } from "node:fs";
+            const m = JSON.parse(readFileSync("manifest.json", "utf8"));
+            const refs = [...new Set([
+              m.background.service_worker,
+              m.side_panel.default_path,
+              ...Object.values(m.icons),
+              ...m.content_scripts.flatMap((c) => c.js),
+            ])];
+            const missing = refs.filter((p) => !existsSync(p));
+            if (missing.length) {
+              console.error("manifest references missing files:", missing);
+              process.exit(1);
+            }
+            console.log(`manifest ok — ${refs.length} referenced files present`);
+          '
+
+      # presets.example.json is what users copy to presets.json. If it stops
+      # parsing, the documented starting point is broken.
+      - name: presets.example.json parses
+        run: node -e 'JSON.parse(require("node:fs").readFileSync("presets.example.json","utf8")); console.log("ok")'
+
+  hygiene:
+    name: no committed fleet config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # presets.json carries a connector token AND overrides every profile's
+      # settings on launch. It is gitignored; this fails the build if one is
+      # ever committed anyway.
+      - name: presets.json must not be committed
+        run: |
+          if git ls-files --error-unmatch presets.json >/dev/null 2>&1; then
+            echo "::error file=presets.json::presets.json is committed — it carries a connector token and overrides every profile on launch. Remove it; keep presets.example.json."
+            exit 1
+          fi
+          echo "ok — no presets.json in the index"
