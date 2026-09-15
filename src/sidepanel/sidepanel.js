@@ -365,15 +365,20 @@ function paintCapabilities(platform) {
     block.classList.toggle("unavailable", off);
     for (const el of block.querySelectorAll("input, select, button, textarea")) el.disabled = off;
     // Say WHY once per block rather than on every control.
+    //
+    // "has no X" is the right sentence for a pass the platform genuinely lacks
+    // — WhatsApp has no followers list to comment on. It is the WRONG sentence
+    // for one the adapter implements and we have chosen not to run: saying
+    // "WhatsApp has no follow-ups" would be a plain untruth, and it would hide
+    // the reason from the person most likely to want to switch it back on.
+    const blocked = platform?.blockedCapabilities?.[cap] ?? null;
+    const why = blocked ?? `${platform.label} has no ${CAP_LABELS[cap] ?? cap}.`;
     let note = block.querySelector(".cap-note");
     if (off && !note) {
-      note = Object.assign(document.createElement("p"), {
-        className: "cap-note",
-        textContent: `${platform.label} has no ${CAP_LABELS[cap] ?? cap}.`,
-      });
+      note = Object.assign(document.createElement("p"), { className: "cap-note", textContent: why });
       block.prepend(note);
     } else if (off && note) {
-      note.textContent = `${platform.label} has no ${CAP_LABELS[cap] ?? cap}.`;
+      note.textContent = why;
     } else if (note) {
       note.remove();
     }

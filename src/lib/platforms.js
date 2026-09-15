@@ -133,7 +133,47 @@ export const PLATFORMS = [
     // no followers list, no message-requests folder and nothing public to
     // comment on. Declaring them would make a sweep fail four passes a run
     // instead of skipping them.
-    capabilities: ["dm", "followups"],
+    //
+    // ⚠ `followups` IS ABSENT ON PURPOSE, AND THE ADAPTER CAN DO IT.
+    // It is recorded in `blockedCapabilities` below rather than simply deleted,
+    // so the reason travels with the decision and turning it back on is one
+    // line rather than an archaeology exercise.
+    capabilities: ["dm"],
+
+    /**
+     * Capabilities this adapter implements but must not use here.
+     *
+     * WHY FOLLOW-UPS ARE BLOCKED ON WHATSAPP, measured 2026-09-15.
+     *
+     * A follow-up is an UNSOLICITED outbound message — we start it; the lead
+     * did not just write. WhatsApp treats one of those from a linked web
+     * session as abuse and drops the session: the account is signed out, and it
+     * took exactly one message.
+     *
+     * The extension's own log of the run that did it:
+     *
+     *     sweep sees 2 conversation(s) in the inbox
+     *     follow-ups: 2 queued
+     *     <lead>: sent 1/1
+     *     follow-up 1/3 sent to <lead> (quiet unknown)
+     *     WhatsApp cycle 1 done — 0 replied there; watching
+     *
+     * `0 replied` is the whole point: the sweep answered nobody. The only
+     * message that left was the nudge, and the session went with it.
+     *
+     * REPLYING IS UNAFFECTED — that is what `dm` covers, and it ran for days
+     * without trouble. The difference is who starts the conversation.
+     *
+     * Note `(quiet unknown)`: it could not even establish how long that lead
+     * had been silent, so the nudge fired without the silence it is named for.
+     *
+     * Instagram keeps follow-ups; it tolerates them. If WhatsApp ever changes,
+     * move "followups" back into `capabilities` and delete this entry.
+     */
+    blockedCapabilities: {
+      followups:
+        "WhatsApp signs the account out for an unsolicited message — one follow-up cost a linked session on 2026-09-15.",
+    },
     routes: {
       home: () => "https://web.whatsapp.com/",
     },
