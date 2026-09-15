@@ -398,6 +398,21 @@ a.btn .ico { width:13px; height:13px; flex:0 0 auto; fill:currentColor; }
 /* ── fields ───────────────────────────────────────────────────────────── */
 .field { display:block; min-width:0; }
 .field > span { display:block; font:550 11.5px/1 var(--body); color:var(--ink2); margin-bottom:6px; }
+
+/* A label row with something on the right.
+   ⚠ `.field > span.with-action` rather than `.with-action`: the rule above is
+   (0,1,1) and a lone class is (0,1,0), so a plain `.with-action { display:flex }`
+   loses to it and the row stays a block with the link wrapping underneath. */
+.field > span.with-action { display:flex; align-items:center; }
+.field > span.with-action > label { font:inherit; color:inherit; cursor:pointer; }
+/* Pushed to the far edge, so the label and its ⓘ stay together on the left. */
+.field > span.with-action .link { margin-left:auto; }
+/* `.link` was written for <button>, which has no underline of its own. An
+   anchor does, and it would sit under the label row looking like a typo. */
+a.link { text-decoration:none; }
+/* The one mark that says "this leaves the panel". Small, and after the text so
+   it reads as punctuation rather than an icon. */
+a.link.out::after { content:"↗"; margin-left:3px; font-size:.92em; }
 .field.row { display:flex; gap:var(--s2); align-items:flex-end; }
 .field .grow { flex:1; min-width:0; }
 /* ⚠ AN INPUT IN A FLEX ROW NEEDS `min-width:0`, or its `width:100%` becomes a

@@ -136,10 +136,20 @@
            what it is: everything inside a platform row below belongs to that
            account alone, and the token belongs to all of them. Position is the
            cheapest way to say so. -->
-      <label class="field">
-        <span>Character token <button type="button" class="info" aria-label="From the FluidTalk dashboard. The token IS the character." data-tip="From the FluidTalk dashboard. The token IS the character."></button></span>
+      <!-- A DIV WRAPPING AN EXPLICIT <label>, not a <label> wrapping everything.
+           A label forwards any click inside it to its control, so the "Get a
+           token" link would also focus the password field on the way out — and
+           the ⓘ beside it would have needed the same guard the toggles do.
+           Pairing `for` with the input's id keeps the label association exact
+           without owning the clicks. -->
+      <div class="field">
+        <span class="with-action">
+          <label for="connectorToken">Character token</label>
+          <button type="button" class="info" aria-label="From the FluidTalk dashboard. The token IS the character." data-tip="From the FluidTalk dashboard. The token IS the character."></button>
+          <a class="link out" href="https://talk.fluidvip.com" target="_blank" rel="noopener noreferrer">Get a token</a>
+        </span>
         <input id="connectorToken" type="password" placeholder="ftc_…" autocomplete="off" spellcheck="false" />
-      </label>
+      </div>
 
       <hr class="rule" />
 
