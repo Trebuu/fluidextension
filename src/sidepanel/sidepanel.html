@@ -17,7 +17,7 @@
          Refraction is Chromium-only, which is the only browser this extension
          runs in — elsewhere lg.css degrades to frost + rim + highlight. -->
     <header class="bar" data-lg data-lg-bezel="16" data-lg-blur="11"
-            data-lg-radius="18" data-lg-live>
+            data-lg-radius="18" data-lg-live data-lg-interactive>
       <!-- Mark and name are one lockup, so the bar's space-between keeps them
            together on the left and the pills on the right. The mark comes
            straight from FluidTalk's icon.svg — this panel is a FluidTalk client
@@ -35,7 +35,14 @@
     </header>
 
     <nav class="tabs" role="tablist" data-lg data-lg-bezel="13" data-lg-blur="9"
-         data-lg-radius="16" data-lg-live>
+         data-lg-radius="16" data-lg-live data-lg-interactive>
+      <!-- THE SELECTION IS ONE ELEMENT THAT MOVES, not a background that jumps
+           between four. A repainted background cannot be animated between two
+           different boxes; a single indicator can travel, and travelling is the
+           whole reason the control reads as physical. Positioned from JS
+           (`moveTabDot`) because the tabs are a fr-grid and their box is only
+           known at layout time. It sits BEHIND the labels (z-index:0 vs 1). -->
+      <span class="tabdot" aria-hidden="true"></span>
       <button role="tab" class="tab is-active" data-tab="inbox" aria-selected="true">Inbox</button>
       <button role="tab" class="tab" data-tab="settings" aria-selected="false">Settings</button>
       <button role="tab" class="tab" data-tab="presets" aria-selected="false">Presets</button>
@@ -114,7 +121,7 @@
            the same reason the top bar does: at 380px a docked bar would take a
            slice out of the only dimension the panel has. -->
       <div class="runbar" data-lg data-lg-bezel="18" data-lg-blur="13"
-           data-lg-radius="20" data-lg-live>
+           data-lg-radius="20" data-lg-live data-lg-interactive>
         <!-- Filled in from settings on load: what Start does depends on them. -->
         <p class="hint" id="sweep-status"></p>
         <div class="actions">

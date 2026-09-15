@@ -1541,6 +1541,36 @@ $("preset-apply-pasted").addEventListener("click", (e) =>
 
 // ── tabs ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Move the selection indicator under the active tab.
+ *
+ * MEASURED, NOT COMPUTED. The rail is a four-column `1fr` grid inside a padded,
+ * glass-bevelled box, so the tab's box depends on the rail's own width, its
+ * padding and the gap — three numbers that would have to be kept in sync with
+ * the stylesheet by hand, and would be wrong the first time any of them
+ * changed. `offsetLeft`/`offsetWidth` are already the answer.
+ *
+ * WIDTH IS SET ONCE AND THEN ONLY TRANSFORMED. Animating `left`/`width` lays
+ * the rail out on every frame; a translate and a scaleX are composited. The
+ * indicator is therefore kept at a fixed base width (the first tab's) and
+ * stretched — which also means the spring can overshoot without the box ever
+ * being re-measured mid-flight.
+ */
+function moveTabDot(tab) {
+  const dot = document.querySelector(".tabdot");
+  if (!dot || !tab) return;
+  // A hidden panel has no layout; a zero-width tab means the panel is not on
+  // screen yet and the measurement would place the indicator at 0.
+  if (!tab.offsetWidth) return;
+
+  const base = Number(dot.dataset.base || 0) || tab.offsetWidth;
+  if (!dot.dataset.base) {
+    dot.dataset.base = String(base);
+    dot.style.width = `${base}px`;
+  }
+  dot.style.transform = `translate3d(${tab.offsetLeft}px,0,0) scaleX(${tab.offsetWidth / base})`;
+}
+
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
     for (const t of document.querySelectorAll(".tab")) {
@@ -1551,11 +1581,20 @@ for (const tab of document.querySelectorAll(".tab")) {
     for (const p of document.querySelectorAll(".panel")) {
       p.classList.toggle("is-active", p.dataset.panel === tab.dataset.tab);
     }
+    moveTabDot(tab);
     // Repainted on open rather than polled: a preset list changes only when
     // somebody changes it, and the fleet state only at launch.
     if (tab.dataset.tab === "presets") paintPresets();
   });
 }
+
+// The first placement has to wait for layout — at parse time the rail has no
+// width and the indicator would sit at x=0 with a 0 scale. A resize re-measures
+// for the same reason: the panel is user-resizable, so the rail's columns are
+// not fixed for the life of the page.
+const placeTabDot = () => moveTabDot(document.querySelector(".tab.is-active"));
+requestAnimationFrame(placeTabDot);
+addEventListener("resize", placeTabDot);
 
 // ── live updates ─────────────────────────────────────────────────────────────
 

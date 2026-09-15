@@ -197,8 +197,31 @@ body {
   padding:7px 0; border-radius:var(--r-xs); cursor:pointer;
 }
 .tab:hover { color:var(--ink2); }
-.tab.is-active { color:var(--ink); background:color-mix(in srgb,var(--ink) 13%,transparent); }
+.tab.is-active { color:var(--ink); }
 .tab:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+
+/* THE TRAVELLING SELECTION.
+   `left`/`width` are set once from JS and never animated — animating either
+   relayouts the rail on every frame. The movement is a transform, which the
+   compositor owns, so a spring costs nothing.
+   The curve is Apple's: a slight overshoot on the way in, none on the way out.
+   `scaleX` is set alongside translate so a wide tab does not squash a narrow
+   one — see `moveTabDot`. */
+.tabdot {
+  position:absolute; z-index:0; top:4px; bottom:4px; left:0; width:0;
+  border-radius:var(--r-xs);
+  background:color-mix(in srgb,var(--ink) 13%,transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb,#fff 16%,transparent),
+    0 1px 3px color-mix(in srgb,#000 22%,transparent);
+  transform-origin:left center;
+  transition:transform .42s cubic-bezier(.32,1.28,.38,1);
+  pointer-events:none;
+}
+/* Before the first measurement there is nothing to show. Painting a 0-width
+   slab at x=0 flashes a sliver in the corner on every panel open. */
+.tabdot:not([style*="width"]) { opacity:0; }
+@media (prefers-reduced-motion:reduce){ .tabdot { transition:none; } }
 
 /* ── the scrolling work ───────────────────────────────────────────────── */
 .panel {
@@ -539,3 +562,146 @@ code { font:500 10.5px/1.4 var(--mono); color:var(--ink2); background:var(--fiel
   color:var(--ink3); border:0; }
 
 #preset-paste { font:500 10.5px/1.5 var(--mono); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTION
+   ───────────────────────────────────────────────────────────────────────────
+   Everything here is either a compositor property (transform / opacity) or a
+   width the browser was going to lay out anyway. Nothing animates a box the
+   glass sits on: `lg-core` bakes a displacement map per size, so animating a
+   [data-lg] host's geometry would rebuild that map every frame and throw all
+   but the last.
+
+   One curve does almost all of it. `--ease` is Apple's standard out-curve —
+   fast to 80% then a long settle — and `--spring` adds the small overshoot
+   that makes a selection feel picked up rather than redrawn.
+
+   EVERY rule is switched off under prefers-reduced-motion at the bottom of the
+   block, in ONE place, rather than per rule.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ease: cubic-bezier(.32,.72,0,1);
+  --spring: cubic-bezier(.32,1.28,.38,1);
+  --dur-1: .16s;
+  --dur-2: .26s;
+  --dur-3: .42s;
+}
+
+/* ── entrances ──────────────────────────────────────────────────────────── */
+/* A panel does not cut in. It rises a few pixels, which reads as the content
+   arriving rather than the tab having been redrawn under you. */
+@keyframes lift-in {
+  from { opacity:0; transform:translate3d(0,7px,0); }
+  to   { opacity:1; transform:none; }
+}
+/* ⚠ THE CHILDREN, AND NEVER `.panel` ITSELF — `.runbar` is a [data-lg] host
+   living INSIDE the inbox panel. A transform on the panel would make it a
+   backdrop root for 260ms on every tab switch, and the run bar's glass would
+   half-render or vanish for exactly that long: the trap at the top of this
+   file, arriving through an animation instead of a layout rule. Excluding it
+   costs nothing, because an absolutely-positioned bar pinned to the bottom was
+   never going to read as "rising" anyway. */
+.panel.is-active > *:not(.runbar) { animation:lift-in var(--dur-2) var(--ease) both; }
+
+/* The budget tiles carry the one set of numbers that changes on its own, so
+   they get a stagger — three things landing in sequence reads as a readout
+   being filled, where three landing together reads as a repaint. */
+@keyframes tile-in {
+  from { opacity:0; transform:translate3d(0,6px,0) scale(.985); }
+  to   { opacity:1; transform:none; }
+}
+.panel.is-active .budget { animation:tile-in var(--dur-2) var(--ease) both; }
+.panel.is-active .budget:nth-child(1) { animation-delay:.02s; }
+.panel.is-active .budget:nth-child(2) { animation-delay:.06s; }
+.panel.is-active .budget:nth-child(3) { animation-delay:.10s; }
+
+/* A message appears from the side it belongs to. Incoming leans in from the
+   left, ours from the right — the same geometry that decides direction in the
+   adapter, so the animation cannot disagree with the classification. */
+@keyframes msg-in-left {
+  from { opacity:0; transform:translate3d(-9px,3px,0) scale(.97); }
+  to   { opacity:1; transform:none; }
+}
+@keyframes msg-in-right {
+  from { opacity:0; transform:translate3d(9px,3px,0) scale(.97); }
+  to   { opacity:1; transform:none; }
+}
+.transcript .msg { animation:msg-in-left var(--dur-2) var(--ease) both; }
+.transcript .msg.out { animation-name:msg-in-right; }
+/* Only the tail is staggered. A forty-message history that dealt itself out
+   one bubble at a time would take four seconds to become readable. */
+.transcript .msg:nth-last-child(1) { animation-delay:.10s; }
+.transcript .msg:nth-last-child(2) { animation-delay:.07s; }
+.transcript .msg:nth-last-child(3) { animation-delay:.04s; }
+.transcript .msg:nth-last-child(4) { animation-delay:.02s; }
+
+/* A generated reply is the one thing here the user waited on, so it gets the
+   spring rather than the plain ease. */
+@keyframes reply-in {
+  from { opacity:0; transform:translate3d(0,8px,0) scale(.96); }
+  to   { opacity:1; transform:none; }
+}
+.bubbles li { animation:reply-in var(--dur-3) var(--spring) both; }
+.bubbles li:nth-child(2) { animation-delay:.07s; }
+.bubbles li:nth-child(3) { animation-delay:.14s; }
+.bubbles li:nth-child(n+4) { animation-delay:.2s; }
+
+/* Log rows enter from the top because that is where a new one is inserted. */
+@keyframes row-in {
+  from { opacity:0; transform:translate3d(0,-4px,0); }
+  to   { opacity:1; transform:none; }
+}
+.log li:first-child { animation:row-in var(--dur-2) var(--ease) both; }
+
+/* ── the live state ─────────────────────────────────────────────────────── */
+/* A run pill that says "Running" and sits perfectly still is the single most
+   common way a stalled sweep reads as a healthy one. The dot breathes only
+   while the run bar is actually running. */
+@keyframes breathe {
+  0%,100% { opacity:1;   transform:scale(1); }
+  50%     { opacity:.55; transform:scale(.82); }
+}
+.pill[data-state="running"] .dot,
+.pill[data-state="sweeping"] .dot { animation:breathe 1.9s var(--ease) infinite; }
+
+/* The budget meter fills rather than snapping, so a cap being spent is
+   something you can see happen. Width is the honest property here — the bar is
+   a bar, not a transform of one. */
+.meter, .budget .meter > * { transition:width var(--dur-3) var(--ease); }
+
+/* ── controls ───────────────────────────────────────────────────────────── */
+/* Press feedback. `active` rather than `:hover` does the work: this panel is
+   driven by deliberate clicks, and a hover-only affordance says nothing on a
+   trackpad tap. */
+.btn { transition:transform var(--dur-1) var(--ease), background var(--dur-1), border-color var(--dur-1); }
+.btn:active:not(:disabled) { transform:scale(.975); }
+.tab { transition:color var(--dur-2) var(--ease); }
+.pill { transition:background var(--dur-2) var(--ease), color var(--dur-2) var(--ease); }
+
+/* The accordion chevron already turned; the body it opens did not. */
+@keyframes body-in {
+  from { opacity:0; transform:translate3d(0,-5px,0); }
+  to   { opacity:1; transform:none; }
+}
+.pbody { animation:body-in var(--dur-2) var(--ease) both; }
+
+/* ── the one switch ─────────────────────────────────────────────────────── */
+/* Reduced motion means NO motion, not less of it — including the infinite
+   breathe, which is the one that matters to somebody who asked for stillness.
+   The end states above are all `to { transform:none }`, so cancelling the
+   animation leaves every element exactly where it belongs. */
+@media (prefers-reduced-motion:reduce) {
+  .panel.is-active > *:not(.runbar),
+  .panel.is-active .budget,
+  .transcript .msg,
+  .bubbles li,
+  .log li:first-child,
+  .pbody,
+  .pill[data-state="running"] .dot,
+  .pill[data-state="sweeping"] .dot {
+    animation:none;
+  }
+  .btn, .tab, .pill, .meter, .budget .meter > * { transition:none; }
+  .btn:active:not(:disabled) { transform:none; }
+}
