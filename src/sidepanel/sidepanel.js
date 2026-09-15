@@ -411,17 +411,24 @@ function paintPlatforms(info) {
   // every focus change and every save, and a module that collapsed under the
   // user mid-edit would be unusable.
   //
-  // ⚠ `undefined` AND `null` ARE DIFFERENT HERE, and conflating them is what
-  // made a module impossible to close. `undefined` means nobody has chosen yet,
-  // so open the one being worked; `null` means the user CLOSED it, and must be
-  // left alone. Testing it with `!state.openPlatform` treated a deliberate
-  // close as "nothing chosen" and re-opened the default on the very next paint
-  // — so clicking an open module's header did nothing at all, and closing any
-  // other one made the active platform spring open instead.
+  // EVERY MODULE STARTS CLOSED. Settings is read top-down — token, then which
+  // platform to bind — and a module that springs open on arrival buries the
+  // rest of the tab under one platform's full form before the user has said
+  // they care about that platform. Opening one is a deliberate act.
+  //
+  // ⚠ `undefined` AND `null` ARE STILL DIFFERENT, and conflating them is what
+  // once made a module impossible to close. `undefined` means nobody has chosen
+  // yet; `null` means the user CLOSED it. They now lead to the same PLACE — no
+  // module open — but they must stay distinguishable, because testing this with
+  // `!state.openPlatform` would treat a deliberate close as "nothing chosen"
+  // and re-run the default on the very next paint.
   const chosen = state.openPlatform !== undefined;
   const stillThere = info.rows.some((p) => p.id === state.openPlatform);
+  // Closed on first paint, and closed again if the module that WAS open has
+  // gone — falling back to a different platform's form would be answering a
+  // question the user never asked.
   if (!chosen || (state.openPlatform !== null && !stillThere)) {
-    state.openPlatform = info.active ?? info.rows.find((p) => p.configured)?.id ?? info.rows[0]?.id ?? null;
+    state.openPlatform = null;
   }
 
   // REBUILT ONLY WHEN A ROW WOULD ACTUALLY LOOK DIFFERENT.
