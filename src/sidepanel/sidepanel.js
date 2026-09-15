@@ -1673,4 +1673,22 @@ chrome.windows.onFocusChanged.addListener(refreshAll);
 chrome.tabs.onRemoved.addListener(refreshAll);
 chrome.tabs.onCreated.addListener(refreshAll);
 
+/**
+ * Let the glass see the pointer.
+ *
+ * ⚠ `data-lg-live` ON ITS OWN DOES NOTHING. It marks a host as wanting a live
+ * highlight, but lg-core only auto-runs `mount()`; the pointermove listener
+ * lives behind `LG.trackPointer()` and the PAGE has to ask for it. Without this
+ * call `--lg-tx`/`--lg-ty` keep their 50%/50% default, so the specular glow
+ * sits permanently in the middle of the bar, the tab rail and the run bar
+ * rather than following the cursor — which reads as a highlight that is simply
+ * in the wrong place. lg-core's own source calls this out: "the glow position
+ * was never written before, which is why the light spreading from your
+ * fingertip sat permanently in the middle."
+ *
+ * Guarded because lg-core is a plain classic script: if it failed to load, the
+ * panel must still work with no material at all rather than die on boot.
+ */
+globalThis.LG?.trackPointer?.();
+
 refreshAll();
