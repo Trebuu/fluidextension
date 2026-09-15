@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- FluidTalk browser-tab icon: the bare Talk-Drop (drop = Fluid, 3 dots = Talk) on a
+       TRANSPARENT background, matching the other Fluid products (e.g. FluidCloud's drop favicon).
+       No background tile. The silhouette is the family standard — see FluidGhost web/public/logo.svg. -->
+  <defs>
+    <linearGradient id="ftMint" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <path d="M32 5C32 5 13 27 13 41a19 19 0 1 0 38 0C51 27 32 5 32 5Z" fill="url(#ftMint)"/>
+  <g fill="#ffffff">
+    <circle cx="24.5" cy="41.5" r="3.4"/>
+    <circle cx="32" cy="41.5" r="3.4"/>
+    <circle cx="39.5" cy="41.5" r="3.4"/>
+  </g>
+</svg>

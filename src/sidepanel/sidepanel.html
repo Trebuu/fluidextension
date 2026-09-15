@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FluidExtension</title>
+    <!-- The material FIRST, the panel's own styles after, so the cascade order
+         matches the design system's: lg.css declares the layers, sidepanel.css
+         decides what wears them. -->
+    <link rel="stylesheet" href="../vendor/lg.css" />
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <!-- GLASS IS CHROME. The bar, the tab rail and the run bar float over the
+         column and are glass; everything carrying a number or a message is an
+         opaque card. `data-lg-live` moves the specular with the pointer.
+         Refraction is Chromium-only, which is the only browser this extension
+         runs in — elsewhere lg.css degrades to frost + rim + highlight. -->
+    <header class="bar" data-lg data-lg-bezel="16" data-lg-blur="11"
+            data-lg-radius="18" data-lg-live>
+      <!-- Mark and name are one lockup, so the bar's space-between keeps them
+           together on the left and the pills on the right. The mark comes
+           straight from FluidTalk's icon.svg — this panel is a FluidTalk client
+           and should read as one. -->
+      <div class="lockup">
+        <img class="mark" src="../../icons/icon.svg" alt="" width="18" height="18" />
+        <h1 class="wordmark"><b>Fluid</b><span>Extension</span></h1>
+      </div>
+      <!-- Which platform is being WORKED — not which tab is in front. It
+           follows the last platform tab you focused and stays there while you
+           look at anything else, including this panel. -->
+      <span class="pill" id="platform-pill" data-state="none">—</span>
+      <!-- Says what the panel is DOING, which is the one thing worth a colour. -->
+      <span class="pill" id="run-pill" data-state="idle"><i class="dot"></i>Idle</span>
+    </header>
+
+    <nav class="tabs" role="tablist" data-lg data-lg-bezel="13" data-lg-blur="9"
+         data-lg-radius="16" data-lg-live>
+      <button role="tab" class="tab is-active" data-tab="inbox" aria-selected="true">Inbox</button>
+      <button role="tab" class="tab" data-tab="settings" aria-selected="false">Settings</button>
+      <button role="tab" class="tab" data-tab="presets" aria-selected="false">Presets</button>
+      <button role="tab" class="tab" data-tab="activity" aria-selected="false">Activity</button>
+    </nav>
+
+    <!-- ── Inbox ─────────────────────────────────────────────────────────── -->
+    <section class="panel is-active" data-panel="inbox">
+      <!-- The platform list lives in SETTINGS now. Choosing a platform is a
+           setup act, not something to do mid-conversation, and the header pill
+           already answers "which one am I on" from here. -->
+
+      <!-- Budgets first: they decide what happens next, so they answer
+           "why did it skip everyone" before the conversation is even read. -->
+      <div class="budgets">
+        <div class="budget">
+          <div class="n" id="q-new-n">—</div>
+          <div class="k">New</div>
+          <div class="meter"><i id="q-new-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-new-sub"></div>
+        </div>
+        <!-- HIDDEN rather than greyed where the platform has no such pass: a
+             budget is a readout, not a control, and "5 outreach remaining" on
+             WhatsApp is not a disabled feature, it is a number that will never
+             move and cannot mean anything. -->
+        <div class="budget" data-capability-hide="outreach">
+          <div class="n" id="q-out-n">—</div>
+          <div class="k">Outreach</div>
+          <div class="meter"><i id="q-out-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-out-sub"></div>
+        </div>
+        <div class="budget" data-capability-hide="requests">
+          <div class="n" id="q-req-n">—</div>
+          <div class="k">Requests</div>
+          <div class="meter"><i id="q-req-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-req-sub"></div>
+        </div>
+      </div>
+
+      <div id="status" class="status" role="status"></div>
+
+      <div class="card" id="thread-card" hidden>
+        <div class="card-head">
+          <span class="who" id="thread-handle"></span>
+          <button class="link" id="refresh">Refresh</button>
+        </div>
+        <ol class="transcript" id="transcript"></ol>
+      </div>
+
+      <div class="card" id="reply-card" hidden>
+        <div class="card-head"><span class="who">Suggested reply</span></div>
+        <ol class="bubbles" id="bubbles"></ol>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="generate">Generate</button>
+        <button class="btn" id="insert" disabled>Insert</button>
+        <button class="btn" id="send" disabled>Send</button>
+      </div>
+      <p class="hint" id="action-hint"></p>
+
+      <!-- Lives here, not in Settings: it changes what these three buttons
+           mean, and it is the difference between drafting and messaging. -->
+      <label class="check">
+        <span>
+          <span class="lab">Reply automatically</span>
+          <span class="sub" id="autoSend-sub"></span>
+        </span>
+        <input id="autoSend" type="checkbox" />
+      </label>
+
+      <!-- THE RUN BAR. Wrapped, not moved: `sidepanel.js` reaches both of
+           these by id, so giving them a floating container changes where they
+           sit and nothing about what drives them. It is chrome — the thing
+           that starts and stops the work — so it is glass, and it floats for
+           the same reason the top bar does: at 380px a docked bar would take a
+           slice out of the only dimension the panel has. -->
+      <div class="runbar" data-lg data-lg-bezel="18" data-lg-blur="13"
+           data-lg-radius="20" data-lg-live>
+        <!-- Filled in from settings on load: what Start does depends on them. -->
+        <p class="hint" id="sweep-status"></p>
+        <div class="actions">
+          <button class="btn primary" id="sweep-toggle">Start</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Settings ──────────────────────────────────────────────────────── -->
+    <section class="panel" data-panel="settings">
+      <!-- THE GLOBAL SETTING COMES FIRST, ABOVE THE PLATFORMS, because that is
+           what it is: everything inside a platform row below belongs to that
+           account alone, and the token belongs to all of them. Position is the
+           cheapest way to say so. -->
+      <label class="field">
+        <span>Character token</span>
+        <input id="connectorToken" type="password" placeholder="ftc_…" autocomplete="off" spellcheck="false" />
+        <small>
+          Per-character token from the FluidTalk dashboard — the token <em>is</em>
+          the character. <b>Shared by every platform:</b> one token already
+          carries a binding for each, so the same character runs everywhere.
+        </small>
+      </label>
+
+      <hr class="rule" />
+
+      <p class="hint">
+        Open a platform to set it up, then <b>Bind</b> it. <b>Only one platform
+        can be bound</b>, and the bound one is the only one worked — binding
+        another unbinds the first. Settings are kept for all of them.
+      </p>
+
+      <!-- One row per platform, built in JS. The form below is MOVED into
+           whichever row is open, so there is exactly one copy of it and it can
+           only ever be showing one platform's values. -->
+      <div class="accordion" id="platform-settings"></div>
+
+      <!-- WHERE THE FORM LIVES WHILE NO MODULE IS OPEN.
+           It has to live SOMEWHERE outside the modules: they are rebuilt with
+           replaceChildren, which discards whatever is inside them, so a form
+           left parked in a module it is no longer being re-parented out of is
+           destroyed — and then opening a module finds no form to move. -->
+      <div id="form-home" hidden>
+      <!-- ── one platform's settings ──────────────────────────────────────
+           Re-parented into the open module. Kept as ONE form rather than three
+           copies: the ids are what every binding and every paint is written
+           against, and three of everything would mean three chances for a
+           control to be wired to the wrong account. -->
+      <div class="pform" id="platform-form" hidden>
+      <div class="field">
+        <span>Signed in as</span>
+        <!-- The handle is its own node so painting it cannot wipe the badge. -->
+        <p class="detected"><b id="ownUsername">—</b><span class="pill">detected</span></p>
+        <small>Read from the page and sent as <code>own_username</code>, so FluidTalk knows which account got the DM.</small>
+      </div>
+
+      <!-- ── WHEN THIS ACCOUNT IS AWAKE ─────────────────────────────────────
+           First in the form, above every cap and every pass, because it
+           governs all of them: a rate per hour only means anything during the
+           hours the account acts at all.
+
+           The DAYS are seven circles and nothing else — the week has to read
+           at a glance, and at 380px a permanent seven-row grid would eat the
+           panel. A day that is on gets a row below; a day that is off has
+           nothing to scroll past. -->
+      <label class="check" for="scheduleEnabled">
+        <span>
+          <span class="lab">Run on a schedule</span>
+          <span class="sub" id="scheduleEnabled-sub"></span>
+        </span>
+        <input id="scheduleEnabled" type="checkbox" />
+      </label>
+
+      <div class="card sched" id="schedule-card" hidden>
+        <div class="week" id="schedule-week" role="group" aria-label="Days this account runs"></div>
+        <div class="windows" id="schedule-windows"></div>
+        <hr class="rule" />
+        <div class="jrow">
+          <label for="scheduleJitterMin">Start within</label>
+          <input id="scheduleJitterMin" type="number" min="0" max="60" step="1" />
+          <span class="unit">min of the window</span>
+        </div>
+        <small>Worked out from this account and the window rather than rolled, so a fleet sharing one preset does not all wake on the same second.</small>
+        <!-- The readout comes from the WORKER, not from a calendar in here:
+             "opens Monday 09:04" has to be the sentence the tick is acting on. -->
+        <div class="next" id="schedule-next" data-live="false">
+          <span class="lead">
+            <span class="hd" id="schedule-next-hd">—</span>
+            <span class="sub" id="schedule-next-sub"></span>
+          </span>
+        </div>
+      </div>
+
+      <div class="field row">
+        <label class="grow">
+          <span>New / hour</span>
+          <input id="newThreadsPerHour" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>New / day</span>
+          <input id="newThreadsPerDay" type="number" min="0" step="1" />
+        </label>
+      </div>
+      <small>Counts only threads we have never replied in. Answering someone already talking to us is never throttled.</small>
+
+      <label class="field">
+        <span>Ignore threads older than</span>
+        <input id="maxThreadAgeDays" type="number" min="0" step="1" />
+        <small>Days. 0 = no limit. Read from the inbox timestamp, so it is language-dependent; an age we cannot parse is not filtered.</small>
+      </label>
+
+      <div class="field row">
+        <label class="grow">
+          <span>Min delay (s)</span>
+          <input id="minReplyDelayMs" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>Max delay (s)</span>
+          <input id="maxReplyDelayMs" type="number" min="0" step="1" />
+        </label>
+      </div>
+      <small>Waited before the first bubble, so a reply never lands instantly.</small>
+
+      <hr class="rule" />
+
+<div data-capability="requests">
+      <label class="check">
+        <span>
+          <span class="lab">Accept message requests</span>
+          <span class="sub" id="requests-sub"></span>
+        </span>
+        <input id="acceptRequests" type="checkbox" />
+      </label>
+      <div class="field row">
+        <label class="grow">
+          <span>Accept / hour</span>
+          <input id="requestsPerHour" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>Accept / day</span>
+          <input id="requestsPerDay" type="number" min="0" step="1" />
+        </label>
+      </div>
+
+      </div>
+
+      <hr class="rule" />
+
+      <label class="check">
+        <span>
+          <span class="lab">Answer media we can't open</span>
+          <span class="sub">
+            A view-once photo never reaches the browser. On, the character is
+            told <em>"sent a disappearing photo"</em> and answers naturally.
+            Off, the thread is skipped. That phrase is stored as their message.
+          </span>
+        </span>
+        <input id="describeUnreadable" type="checkbox" />
+      </label>
+
+      <hr class="rule" />
+
+<div data-capability="followups">
+      <label class="check">
+        <span>
+          <span class="lab">Follow up when they go quiet</span>
+          <span class="sub">Nudges leads who stopped replying after we spoke last.</span>
+        </span>
+        <input id="followupsEnabled" type="checkbox" />
+      </label>
+      <label class="field">
+        <span>Follow-up ladder — hours to wait before each nudge</span>
+        <input id="followupStagesHours" type="text" inputmode="numeric" placeholder="12, 24, 48" autocomplete="off" spellcheck="false" />
+        <small id="followup-sub"></small>
+      </label>
+
+      </div>
+
+      <hr class="rule" />
+
+<div data-capability="comments">
+      <label class="check">
+        <span>
+          <span class="lab">Comment on posts</span>
+          <span class="sub">
+            Public — everyone who sees the post sees this. Also needs Comments
+            turned on for the character in FluidTalk, which is off by default.
+          </span>
+        </span>
+        <input id="commentsEnabled" type="checkbox" />
+      </label>
+      <label class="field">
+        <span>Comment on</span>
+        <select id="commentSources">
+          <option value="feed">Posts in my home feed</option>
+          <option value="followers">Posts by my followers</option>
+          <option value="both">Both</option>
+        </select>
+      </label>
+      <div class="field row">
+        <label class="grow">
+          <span>Comments / hour</span>
+          <input id="commentsPerHour" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>Comments / day</span>
+          <input id="commentsPerDay" type="number" min="0" step="1" />
+        </label>
+      </div>
+      <label class="check">
+        <span>
+          <span class="lab">Skip ads</span>
+          <span class="sub">Sponsored posts and paid partnerships. An ad looks like an ordinary post apart from one line of label.</span>
+        </span>
+        <input id="skipSponsored" type="checkbox" />
+      </label>
+      <label class="field">
+        <span>Posts to scan per run</span>
+        <input id="feedScanLimit" type="number" min="1" step="1" />
+        <small>The feed paints two or three posts and loads the rest as it scrolls, so a bigger number means more scrolling.</small>
+      </label>
+
+      <div class="actions">
+        <button class="btn" id="comment-check">Are comments on?</button>
+        <button class="btn" id="comment-preview">Draft for this post</button>
+      </div>
+      <div class="actions">
+        <button class="btn" id="feed-preview">Preview feed picks</button>
+      </div>
+
+</div>
+
+      <div data-capability="commentReplies">
+      <label class="check">
+        <span>
+          <span class="lab">Answer replies to my comments</span>
+          <span class="sub">
+            When someone replies under a comment we left, reply back in the same
+            thread. FluidTalk decides whether to answer, nudge them to the DMs,
+            or bow out.
+          </span>
+        </span>
+        <input id="commentRepliesEnabled" type="checkbox" />
+      </label>
+      <div class="field row">
+        <label class="grow">
+          <span>Replies / hour</span>
+          <input id="commentRepliesPerHour" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>Replies / day</span>
+          <input id="commentRepliesPerDay" type="number" min="0" step="1" />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn" id="replies-read">Replies to my comment here</button>
+        <button class="btn" id="replies-dry">Dry-run answering</button>
+      </div>
+
+</div>
+
+            <pre class="probe" id="comment-out" hidden></pre>
+
+      <hr class="rule" />
+
+<div data-capability="outreach">
+      <label class="check">
+        <span>
+          <span class="lab">Cold DM my followers</span>
+          <span class="sub">The only thing here that messages someone who has not written to us. Runs after the inbox.</span>
+        </span>
+        <input id="outreachEnabled" type="checkbox" />
+      </label>
+      <div class="field row">
+        <label class="grow">
+          <span>Outreach / hour</span>
+          <input id="outreachPerHour" type="number" min="0" step="1" />
+        </label>
+        <label class="grow">
+          <span>Outreach / day</span>
+          <input id="outreachPerDay" type="number" min="0" step="1" />
+        </label>
+      </div>
+      <div class="actions">
+        <button class="btn" id="outreach-preview">Preview targets</button>
+      </div>
+      <pre class="probe" id="outreach-list" hidden></pre>
+
+      </div>
+
+      <hr class="rule" />
+
+      <label class="check">
+        <span>
+          <span class="lab">Pause between threads</span>
+          <span class="sub">Off — move straight to the next.</span>
+        </span>
+        <input id="pauseBetweenThreads" type="checkbox" />
+      </label>
+      <label class="field">
+        <span>Pause length (s)</span>
+        <input id="betweenThreadsMs" type="number" min="0" step="1" />
+      </label>
+      </div><!-- /platform-form -->
+      </div><!-- /form-home -->
+
+      <hr class="rule" />
+
+      <!-- Install-wide, like the token: the connection being tested is
+           FluidTalk's, which is the same one for every platform. -->
+      <div class="actions">
+        <button class="btn" id="check-token">Test connection</button>
+        <button class="btn" id="diagnose">Diagnose page</button>
+      </div>
+      <pre class="probe" id="probe" hidden></pre>
+    </section>
+
+    <!-- ── Presets ───────────────────────────────────────────────────────── -->
+    <section class="panel" data-panel="presets">
+      <!-- WHAT A PRESET IS, in one line, because it carries a token and it
+           rebinds the extension — both things somebody should know before
+           pressing Load. -->
+      <p class="hint">
+        A preset is this whole setup — the token, which platform is bound, and
+        every platform's settings. Save one here, then <b>Export</b> it to set up
+        another browser profile without filling the form in again.
+      </p>
+
+      <!-- The fleet file, when there is one. Hidden on an ordinary install:
+           most people have one browser and this would be noise. -->
+      <div class="fleet" id="fleet-box" hidden>
+        <div class="fleet-head"><span class="lab">Fleet config</span><span class="state" id="fleet-state"></span></div>
+        <p class="sub" id="fleet-sub"></p>
+      </div>
+
+      <label class="field">
+        <span>Save this setup as</span>
+        <div class="field row">
+          <input id="preset-name" type="text" placeholder="e.g. Nadia · Telegram" autocomplete="off" spellcheck="false" />
+          <button class="btn primary" id="preset-save">Save</button>
+        </div>
+      </label>
+      <label class="check">
+        <span>
+          <span class="lab">Include the character token</span>
+          <span class="sub">
+            On, this preset can set up a profile completely on its own. Anyone
+            who gets the file can send messages as this character.
+          </span>
+        </span>
+        <input id="preset-with-token" type="checkbox" checked />
+      </label>
+
+      <hr class="rule" />
+
+      <div class="preset-list" id="preset-list"></div>
+
+      <hr class="rule" />
+
+      <div class="field">
+        <span>Import a preset</span>
+        <textarea id="preset-paste" rows="4" placeholder='Paste a preset here, then press Check.' spellcheck="false"></textarea>
+        <div class="actions">
+          <button class="btn" id="preset-check">Check</button>
+          <button class="btn" id="preset-import" disabled>Import</button>
+          <button class="btn" id="preset-apply-pasted" disabled>Apply now</button>
+        </div>
+        <pre class="probe" id="preset-out" hidden></pre>
+      </div>
+    </section>
+
+    <!-- ── Activity ──────────────────────────────────────────────────────── -->
+    <section class="panel" data-panel="activity">
+      <div class="actions">
+        <button class="btn" id="clear-log">Clear</button>
+      </div>
+      <div class="card"><ol class="log" id="log"></ol></div>
+    </section>
+
+    <!-- Classic script, not a module: lg-core mounts every [data-lg] on load
+         and must have done so before anything repaints. It is MV3-safe — no
+         eval, no new Function, no fetch; it builds its filters with
+         createElementNS and its displacement maps with canvas.toDataURL. -->
+    <script src="../vendor/lg-core.js"></script>
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

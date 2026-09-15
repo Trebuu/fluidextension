@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.DS_Store
+
+# THE FLEET CONFIG IS NEVER COMMITTED.
+#
+# Its mere presence in the extension folder makes an install fleet-managed: it
+# is re-applied on every launch and overwrites local settings. Committing one
+# would do that to everybody who checks the repo out — and it carries a
+# character token. Copy presets.example.json to presets.json locally instead.
+presets.json

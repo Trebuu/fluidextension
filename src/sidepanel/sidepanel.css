@@ -1,0 +1,541 @@
+/* FluidExtension side panel — the Fluid design system (Liquid Glass).
+ *
+ * Rebuilt 2026-09-14 on the system in
+ * fluidghost/checkout/design/liquid-glass/ (branch `design/liquid-glass`),
+ * which is the source of truth for how every Fluid product looks. Tokens,
+ * type scale, spacing scale and radii are that system's, not approximations.
+ *
+ * ── THE ONE RULE ──────────────────────────────────────────────────────────
+ * GLASS IS CHROME. CONTENT IS OPAQUE.
+ * The bar, the tab rail and the run bar float above the column and are glass.
+ * Every budget, transcript, draft, field and log row sits on an opaque card.
+ * That is not taste here: this panel's whole job is numbers you act on, and a
+ * figure you re-read because the surface behind it is moving is a figure that
+ * cost you time.
+ *
+ * ── WHY THE CHROME FLOATS ─────────────────────────────────────────────────
+ * A side panel is ~380px and the user cannot make it narrower. A docked bar
+ * would take a slice out of the only dimension there is. Floating it costs
+ * nothing AND gives the lens something to bend, because the conversation
+ * scrolls underneath it — a lens over a flat fill is just a bordered box.
+ *
+ * ── STILL DARK ONLY, AND STILL DELIBERATELY ───────────────────────────────
+ * The previous stylesheet said so and the reason has not changed: FluidTalk's
+ * own stylesheet is a dark-only product and documents a light default breaking
+ * its body-anchored elements. The Fluid system ships light grounds for
+ * marketing surfaces; this panel belongs to FluidTalk and stays dark.
+ *
+ * ── THE ACCENT IS FLUIDTALK EMERALD ───────────────────────────────────────
+ * The system's STRUCTURE is the Fluid one — tokens, scales, type, the material
+ * and where it is allowed. The HUE is FluidTalk's, taken from the Talk-Drop in
+ * icons/icon.svg (#34d399 -> #10b981) so the brand fill and the mark above it
+ * are the same green rather than two that nearly match.
+ *
+ * That has one consequence worth stating, because it is the opposite of what
+ * the design system says to do: there is NO separate semantic green here. The
+ * system keeps semantics off the accent so a state cannot read as decoration,
+ * which works while the accent is violet; against an emerald accent a distinct
+ * "ok" green would sit one shade away and mean something different at 11px.
+ * Green therefore carries exactly one meaning in this panel — ours, on, live,
+ * succeeded — and amber and rose carry the rest. See --okc below.
+ */
+
+@font-face{font-family:'Geist';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(../vendor/geist-latin.woff2) format('woff2')}
+@font-face{font-family:'Geist Mono';font-style:normal;font-weight:100 900;font-display:swap;
+  src:url(../vendor/geist-mono-latin.woff2) format('woff2')}
+
+:root {
+  /* ── ground. The Fluid system warms its neutrals toward violet, and they
+        stay that way under a green accent on purpose: a cool near-black is what
+        keeps emerald reading as a colour rather than as the page. ────────── */
+  --black:#07060b;
+  --deep:#0c0a12;
+  --panel-s:#121019;          /* an opaque content surface */
+
+  /* ── ink ──────────────────────────────────────────────────────────────────
+     ⚠ --ink3 IS LIFTED FROM THE SYSTEM'S #6f697f, and deliberately.
+     Measured on this panel's own grounds, the system value gives 3.59:1 on a
+     card and 3.85:1 on the page — under the 4.5:1 the system itself calls
+     non-negotiable. It is fine on a marketing page, where tertiary ink is a
+     caption under a 20px lede; here it is EVERY hint, every `small` and every
+     budget sub-label, at 10-10.5px, which is exactly where it matters most.
+     #8b83a0 keeps the same violet-warm hue and only raises lightness: 5.25:1
+     on a card, 5.63:1 on the page. Same relationship to --ink2, legible. */
+  --ink:#f6f4fa; --ink2:#a9a3b8; --ink3:#8b83a0; --ink-inv:#0b0912;
+
+  /* ── brand — FLUIDTALK EMERALD, the mark's own colour ─────────────────── */
+  --acc:#6ee7b7;                                   /* accent ON DARK */
+  /* The gradient is lifted straight off the Talk-Drop in icons/icon.svg
+     (#34d399 -> #10b981), so the one brand fill in the panel and the mark
+     above it are the same green rather than two greens that nearly match. */
+  --brand:linear-gradient(135deg,#34d399,#10b981);
+  /* ⚠ DARK INK ON THE MINT FILL, not white. Measured, not eyeballed: white on
+     #10b981 is 2.54:1 — it looks fine in a mock and fails the moment anyone
+     runs a checker. #04231a gives 6.57:1 on the darker stop and 8.67:1 on the
+     lighter, and it is what a mint button actually wants. */
+  --brand-ink:#04231a;
+  --brand-glow:16,185,129;
+
+  /* ── semantic ─────────────────────────────────────────────────────────────
+     ⚠ THERE IS DELIBERATELY NO SEPARATE "OK" GREEN, and this is the whole
+     reason the accent swap needed thought rather than a find-and-replace.
+     The design system keeps semantics off the accent hue so a state cannot be
+     mistaken for a brand flourish — which works while the accent is violet.
+     With the accent moved to emerald, a distinct semantic green would sit one
+     shade away from it: two greens, indistinguishable at 11px, meaning two
+     different things. The panel's ORIGINAL stylesheet had already reasoned
+     this out and said so — "emerald means ours/succeeded, so it must not also
+     mean healthy or a green bubble becomes two signals."
+     So green carries ONE meaning here: ours, on, live, succeeded. Amber and
+     rose carry everything else, and they stay well clear of it. */
+  --okc:var(--acc); --warnc:#fbbf24; --badc:#ff7285;
+
+  --hair:rgba(255,255,255,.10);
+  --hair2:rgba(255,255,255,.055);
+  --card:var(--panel-s);
+  --field:rgba(255,255,255,.05);
+
+  --body:'Geist',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  --mono:'Geist Mono',ui-monospace,Consolas,monospace;
+
+  /* ── the one spacing scale, and the one radius scale ──────────────────── */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --r-xs:10px; --r-sm:14px; --r-md:22px; --r-lg:30px; --r-pill:980px;
+
+  /* How far the floating chrome reaches, so the scroll padding is derived
+     from it rather than guessed twice. */
+  --chrome-top:104px;
+  --chrome-bottom:72px;
+}
+
+* { box-sizing: border-box; }
+
+/* ⚠ `hidden` LOSES TO ANY `display` RULE, and silently.
+ *
+ * The UA sheet says `[hidden] { display: none }` at the lowest specificity, so
+ * any class here that sets `display` — and most layout classes do — overrides
+ * it. The element stays on screen with `el.hidden === true`, which means code
+ * asserting the PROPERTY reports it hidden while the user is looking at it.
+ * Caught exactly that way: the fleet-config box sat on the Presets tab of an
+ * install that has no fleet file, and the test that checked `.hidden` passed. */
+[hidden] { display: none !important; }
+
+body {
+  margin:0; height:100vh; position:relative; overflow:hidden;
+  background:var(--black);
+  color:var(--ink);
+  font:13px/1.5 var(--body);
+  letter-spacing:-.006em;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── the floating chrome ──────────────────────────────────────────────────
+   Absolutely positioned rather than in flow, so the panels scroll UNDER it.
+   ⚠ Nothing on the path to a [data-lg] host may set `isolation`,
+   `will-change`, `transform` or `mix-blend-mode`: each makes a backdrop root,
+   and a descendant's backdrop-filter then samples only what was painted inside
+   it — which Chromium half-renders as a BAND that filters while the rest of
+   the element passes straight through. */
+.bar, .tabs {
+  position:absolute; left:8px; right:8px; z-index:4;
+  border-radius:18px;
+}
+.bar { top:8px; display:flex; align-items:center; gap:var(--s2); padding:9px 10px; }
+.tabs { top:56px; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:4px;
+  border-radius:16px; }
+
+.lockup { display:flex; align-items:center; gap:7px; margin-right:auto; min-width:0; }
+/* THE FLUIDTALK TALK-DROP, untouched — and now the source of the whole
+   palette: --brand is its own gradient, so the mark and the one brand fill in
+   the panel are the same green. */
+.mark { display:block; flex:0 0 auto; }
+.wordmark { margin:0; font:650 13.5px/1 var(--body); letter-spacing:-.022em; color:var(--ink);
+  white-space:nowrap; }
+.wordmark b { font-weight:650; }
+.wordmark span { color:var(--ink3); font-weight:450; }
+
+/* A pill is a READOUT, never a control — so it gets a fill, never a second
+   slab. Never glass on glass. */
+.pill {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3.5px 9px; border-radius:var(--r-pill);
+  font:550 11px/1 var(--body); letter-spacing:-.01em;
+  background:var(--field); color:var(--ink2); border:1px solid var(--hair2);
+  white-space:nowrap;
+}
+.dot { width:6px; height:6px; border-radius:50%; background:var(--ink3); flex:0 0 auto; }
+#platform-pill[data-state="none"] { color:var(--ink3); }
+#platform-pill:not([data-state="none"]) { color:var(--acc);
+  border-color:color-mix(in srgb,var(--acc) 34%,transparent); }
+.pill[data-state="running"] { color:var(--okc);
+  border-color:color-mix(in srgb,var(--okc) 32%,transparent); }
+.pill[data-state="running"] .dot { background:var(--okc);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--okc) 18%,transparent); }
+.pill[data-state="stopping"] { color:var(--warnc);
+  border-color:color-mix(in srgb,var(--warnc) 32%,transparent); }
+.pill[data-state="stopping"] .dot { background:var(--warnc); }
+/* ASLEEP IS NOT IDLE, and it must not borrow the colour of either thing it
+   sits between. Green already means ours/on/live in this panel and amber means
+   stopping, so a third FILL would read as a third kind of running; a hollow
+   ring reads as armed-and-not-acting at 11px, which is exactly what it is. */
+.pill[data-state="scheduled"] { color:var(--ink2); border-color:var(--hair); }
+.pill[data-state="scheduled"] .dot { background:none;
+  box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--acc) 70%,transparent); }
+
+/* ── tab rail ─────────────────────────────────────────────────────────────
+   The rail is glass; the SELECTION is a fill on top of it, not a second slab.
+   That is the "never glass on glass" rule, and it is also why there is no
+   sliding indicator here: the merging trick that makes a selection stretch the
+   glass needs the indicator to be a [data-lg-shape] whose silhouette is
+   remapped whenever it moves, and the panel's tab state is toggled by
+   `sidepanel.js` as a class — there is no move to hook. A fill costs nothing
+   and cannot fall out of sync with the class that actually decides. */
+.tab {
+  position:relative; z-index:1; appearance:none; border:0; background:none;
+  font:550 11.5px/1 var(--body); letter-spacing:-.012em; color:var(--ink3);
+  padding:7px 0; border-radius:var(--r-xs); cursor:pointer;
+}
+.tab:hover { color:var(--ink2); }
+.tab.is-active { color:var(--ink); background:color-mix(in srgb,var(--ink) 13%,transparent); }
+.tab:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+
+/* ── the scrolling work ───────────────────────────────────────────────── */
+.panel {
+  display:none;
+  position:absolute; inset:0; overflow-y:auto; overflow-x:hidden;
+  padding:var(--chrome-top) var(--s3) var(--s5);
+  scrollbar-width:thin; scrollbar-color:var(--hair) transparent;
+}
+.panel.is-active { display:flex; flex-direction:column; gap:var(--s3); }
+.panel::-webkit-scrollbar { width:8px; }
+.panel[data-panel="inbox"].is-active { padding-bottom:var(--chrome-bottom); }
+
+/* ── budgets. THE NUMBERS ARE WHY THIS IS OPAQUE. ─────────────────────── */
+/* FLEX, NOT A THREE-COLUMN GRID. A platform that has no outreach and no
+   requests pass hides those two budgets outright — Telegram hides both — and a
+   fixed grid left the one survivor stranded at a third of the width with two
+   empty columns beside it, which reads as a layout that failed rather than as
+   the only budget this platform has. */
+.budgets { display:flex; gap:var(--s2); }
+.budgets > .budget { flex:1 1 0; }
+.budget { background:var(--card); border:1px solid var(--hair2); border-radius:var(--r-sm);
+  padding:10px 10px 9px; min-width:0; }
+.budget .n { font:650 21px/1 var(--body); letter-spacing:-.03em; color:var(--ink);
+  font-variant-numeric:tabular-nums; }
+.budget .n[data-level="low"] { color:var(--warnc); }
+.budget .n[data-level="spent"] { color:var(--badc); }
+.budget .k { margin-top:3px; font:550 10.5px/1 var(--body); color:var(--ink3); }
+.budget .sub { margin-top:6px; font:450 10px/1.25 var(--body); color:var(--ink3); }
+.budget .sub .in { color:var(--ink2); }
+.budget .sub .in[data-soon="true"] { color:var(--warnc); }
+.meter { margin-top:8px; height:3px; border-radius:99px; background:var(--field); overflow:hidden; }
+.meter i { display:block; height:100%; border-radius:99px; background:var(--acc); }
+.meter i[data-level="low"] { background:var(--warnc); }
+.meter i[data-level="spent"] { background:var(--badc); }
+
+/* ── cards ────────────────────────────────────────────────────────────── */
+.card { background:var(--card); border:1px solid var(--hair2); border-radius:var(--r-md);
+  padding:var(--s3); min-width:0; }
+.card-head { display:flex; align-items:center; justify-content:space-between; gap:var(--s2);
+  margin-bottom:10px; }
+.who { font:600 12.5px/1.2 var(--body); letter-spacing:-.015em; color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; }
+
+.status { font:450 11.5px/1.45 var(--body); color:var(--ink3); }
+.status[data-tone="ok"] { color:var(--okc); }
+.status[data-tone="warn"] { color:var(--warnc); }
+.status[data-tone="error"] { color:var(--badc); }
+
+/* ── transcript. Ours and theirs differ by FILL, not by glass: a message is
+      content. ─────────────────────────────────────────────────────────── */
+.transcript { list-style:none; margin:0; padding:0; display:flex; flex-direction:column;
+  gap:7px; max-height:280px; overflow-y:auto; scrollbar-width:thin;
+  scrollbar-color:var(--hair) transparent; }
+.transcript::-webkit-scrollbar { width:6px; }
+.msg { max-width:86%; padding:8px 11px; border-radius:16px;
+  font:450 12.5px/1.45 var(--body); color:var(--ink); word-wrap:break-word; }
+.msg.in { align-self:flex-start; background:var(--field); border-bottom-left-radius:6px; }
+.msg.out { align-self:flex-end; background:color-mix(in srgb,var(--acc) 17%,transparent);
+  border:1px solid color-mix(in srgb,var(--acc) 26%,transparent); border-bottom-right-radius:6px; }
+
+.bubbles { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.bubbles li { position:relative; padding:8px 11px; border-radius:14px; background:var(--field);
+  font:450 12.5px/1.45 var(--body); color:var(--ink); cursor:pointer;
+  border:1px solid transparent; }
+.bubbles li:hover { border-color:var(--hair); }
+.bubbles li:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+.bubbles li.is-next { border-color:color-mix(in srgb,var(--acc) 40%,transparent); }
+.bubbles li.is-used { opacity:.45; }
+.bmeta { display:block; margin-top:4px; font:500 9.5px/1 var(--mono); color:var(--ink3); }
+
+/* ── controls ─────────────────────────────────────────────────────────── */
+.actions { display:flex; gap:var(--s2); }
+.btn {
+  flex:1; appearance:none; cursor:pointer; min-width:0;
+  padding:9px 10px; border-radius:var(--r-sm);
+  font:550 12px/1 var(--body); letter-spacing:-.012em;
+  background:var(--field); color:var(--ink); border:1px solid var(--hair2);
+}
+.btn:hover:not(:disabled) { background:color-mix(in srgb,var(--ink) 11%,transparent); }
+.btn:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+.btn:disabled { color:var(--ink3); cursor:not-allowed; opacity:.55; }
+/* ONE primary action per view. Colouring every CTA is the fastest way to look
+   like a theme instead of a system. */
+.btn.primary { background:var(--brand); border-color:transparent; color:var(--brand-ink);
+  box-shadow:0 6px 18px rgba(var(--brand-glow),.34); }
+.btn.primary:hover:not(:disabled) { filter:brightness(1.08); }
+.btn.danger { background:color-mix(in srgb,var(--badc) 16%,transparent); color:var(--badc);
+  border-color:color-mix(in srgb,var(--badc) 32%,transparent); }
+.btn.danger:hover:not(:disabled) { background:color-mix(in srgb,var(--badc) 24%,transparent); }
+
+.link { appearance:none; border:0; background:none; padding:0; cursor:pointer;
+  font:550 11.5px/1 var(--body); color:var(--acc); }
+.link:hover { text-decoration:underline; }
+.link:focus-visible { outline:2px solid var(--acc); outline-offset:2px; border-radius:4px; }
+
+.hint { margin:0; font:450 10.5px/1.45 var(--body); color:var(--ink3); }
+.rule { border:0; border-top:1px solid var(--hair2); margin:var(--s2) 0; }
+
+/* ── the run bar. Floats at the foot of the Inbox for the same reason the
+      top chrome floats: it is chrome, and the column keeps its width. ──── */
+.runbar {
+  position:absolute; left:8px; right:8px; bottom:8px; z-index:4;
+  border-radius:20px; padding:10px;
+  display:flex; align-items:center; gap:var(--s3);
+}
+.runbar .actions { flex:0 0 auto; }
+.runbar .btn { flex:0 0 auto; padding-inline:18px; }
+/* TWO LINES, NOT AN ELLIPSIS. This line says what Start will actually do —
+   "Sends replies where their message is the last one…" — and a single nowrap
+   line cut it off exactly where the meaning is. Clamped at two so the bar
+   cannot grow without bound on a long status. */
+.runbar .hint { flex:1; min-width:0; overflow:hidden; display:-webkit-box;
+  -webkit-line-clamp:2; -webkit-box-orient:vertical; line-height:1.35; }
+
+/* ── switches ─────────────────────────────────────────────────────────── */
+.check { display:flex; align-items:flex-start; gap:var(--s3); background:var(--card);
+  border:1px solid var(--hair2); border-radius:var(--r-sm); padding:11px var(--s3);
+  cursor:pointer; }
+.check > span:first-child { flex:1; min-width:0; }
+.check .lab { display:block; font:550 12.5px/1.25 var(--body); color:var(--ink);
+  letter-spacing:-.012em; }
+.check .sub { display:block; margin-top:4px; font:450 10.5px/1.4 var(--body); color:var(--ink3); }
+.check input[type="checkbox"] {
+  appearance:none; margin:0; flex:0 0 auto; width:38px; height:22px; border-radius:99px;
+  background:var(--field); border:1px solid var(--hair); position:relative; cursor:pointer;
+}
+.check input[type="checkbox"]::after {
+  content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%;
+  background:var(--ink3); transition:transform .18s cubic-bezier(.32,.72,0,1), background .18s;
+}
+.check input[type="checkbox"]:checked { background:color-mix(in srgb,var(--acc) 42%,transparent);
+  border-color:transparent; }
+.check input[type="checkbox"]:checked::after { transform:translateX(16px); background:#fff; }
+.check input[type="checkbox"]:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce){ .check input[type="checkbox"]::after { transition:none; } }
+
+/* ── fields ───────────────────────────────────────────────────────────── */
+.field { display:block; min-width:0; }
+.field > span { display:block; font:550 11.5px/1 var(--body); color:var(--ink2); margin-bottom:6px; }
+.field.row { display:flex; gap:var(--s2); align-items:flex-end; }
+.field .grow { flex:1; min-width:0; }
+/* ⚠ AN INPUT IN A FLEX ROW NEEDS `min-width:0`, or its `width:100%` becomes a
+   floor rather than a target and pushes its sibling off the edge. That is
+   exactly what happened to Save beside the preset-name box: the button was
+   rendered, hit-testable and half outside the panel. `.grow` covers the
+   number-pair rows; this covers the input+button row, which has no `.grow`. */
+.field.row > input { flex:1 1 auto; min-width:0; }
+.field.row > .btn { flex:0 0 auto; }
+input[type="text"], input[type="password"], input[type="number"], select, textarea {
+  width:100%; padding:9px 11px; border-radius:var(--r-sm);
+  background:var(--field); border:1px solid var(--hair2); color:var(--ink);
+  font:450 12.5px/1.35 var(--body); font-family:var(--body);
+}
+textarea { resize:vertical; }
+input::placeholder, textarea::placeholder { color:var(--ink3); }
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline:2px solid var(--acc); outline-offset:1px; border-color:transparent; }
+input:disabled { opacity:.5; cursor:not-allowed; }
+small { display:block; margin-top:6px; font:450 10.5px/1.4 var(--body); color:var(--ink3); }
+code { font:500 10.5px/1.4 var(--mono); color:var(--ink2); background:var(--field);
+  padding:1px 4px; border-radius:5px; }
+.detected { margin:0; display:flex; align-items:center; gap:var(--s2); }
+.detected .pill { font-size:10px; }
+
+.probe { margin:0; max-height:220px; overflow:auto; background:var(--card);
+  border:1px solid var(--hair2); border-radius:var(--r-sm); padding:10px;
+  font:500 10.5px/1.5 var(--mono); color:var(--ink2); white-space:pre-wrap;
+  word-break:break-word; }
+
+/* ── the schedule ─────────────────────────────────────────────────────────
+   OPAQUE, like every other control: it is a decision about when a real
+   account acts, not chrome. The card sits inside the platform form and holds
+   the week, the windows and one readout.
+
+   THE WEEK IS SEVEN CIRCLES and they are the only place a day is switched on
+   or off. At 380px a permanent seven-row grid is most of the panel, and most
+   of it says "off" — the circles say the same thing in one line and give the
+   rows something to mean: a row exists because its day is lit. */
+.sched { display:flex; flex-direction:column; gap:var(--s3); }
+
+.week { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+/* ⚠ CAPPED, because a side panel is resizable and `aspect-ratio:1` in a
+   seven-column grid has no upper bound: dragged out to tab width the circles
+   grew to 150px each and the week filled the screen. The panel is designed for
+   ~380px, so the circles are sized for that and simply stop growing. */
+.day {
+  appearance:none; cursor:pointer; padding:0; aspect-ratio:1; border-radius:50%;
+  width:100%; max-width:44px; justify-self:center;
+  background:var(--field); border:1px solid var(--hair2); color:var(--ink3);
+  font:600 11.5px/1 var(--body); letter-spacing:-.01em;
+  display:grid; place-items:center;
+  transition:background .16s, color .16s, border-color .16s;
+}
+.day[aria-pressed="true"] { background:color-mix(in srgb,var(--acc) 20%,transparent);
+  border-color:color-mix(in srgb,var(--acc) 45%,transparent); color:var(--acc); }
+.day:hover { border-color:var(--hair); }
+.day:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce){ .day { transition:none; } }
+
+.windows { display:flex; flex-direction:column; gap:6px; }
+.windows .none { margin:0; font:450 10.5px/1.45 var(--body); color:var(--ink3); }
+/* WRAPS, so the overnight tag drops to a second line on a narrow panel rather
+   than squeezing the times it is describing. */
+.wrow { display:flex; flex-wrap:wrap; align-items:center; gap:var(--s2); background:var(--field);
+  border:1px solid var(--hair2); border-radius:var(--r-xs); padding:7px 8px 7px 10px; }
+.wrow .d { flex:0 0 30px; font:600 11.5px/1 var(--body); color:var(--ink2); }
+/* A second window on the same day reads as "and", not as the day again. */
+.wrow .d.cont { color:var(--ink3); font-weight:450; }
+/* ⚠ WIDE ENOUGH FOR THE WHOLE TIME. At 66px Edge rendered "09:00" as `01::` —
+   clipped, not wrong, and it reads as a field that has lost its value. The
+   native picker button is what eats the room, and it is worth nothing here
+   where every value is typed or stepped, so it goes and the field keeps the
+   space. */
+.wrow input[type="time"] { width:74px; padding:4px 6px; border-radius:8px;
+  background:rgba(0,0,0,.28); border:1px solid var(--hair2); color:var(--ink);
+  font:500 11.5px/1.2 var(--mono); font-variant-numeric:tabular-nums; }
+.wrow input[type="time"]::-webkit-calendar-picker-indicator { display:none; }
+.wrow .sep { color:var(--ink3); font:450 11px/1 var(--body); }
+/* The tag and the button travel together — see `windowRow`. */
+.wrow .end { display:flex; align-items:center; gap:var(--s2); margin-left:auto; }
+/* An end before its start is not an error — it is Friday night. Saying which
+   day it lands on is what makes that read as deliberate rather than as a typo
+   nobody caught. */
+.nextday { font:500 9.5px/1 var(--mono); color:var(--warnc);
+  background:color-mix(in srgb,var(--warnc) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--warnc) 28%,transparent);
+  padding:3px 5px; border-radius:6px; white-space:nowrap; }
+.icon { appearance:none; background:none; border:0; cursor:pointer; color:var(--ink3);
+  width:20px; height:20px; border-radius:6px; display:grid; place-items:center;
+  font:450 14px/1 var(--body); flex:0 0 auto; }
+.icon:hover { color:var(--ink); background:var(--hair2); }
+.icon.rm:hover { color:var(--badc); }
+.icon:focus-visible { outline:2px solid var(--acc); outline-offset:1px; }
+
+.jrow { display:flex; align-items:center; gap:var(--s2);
+  font:550 11.5px/1 var(--body); color:var(--ink2); }
+.jrow input[type="number"] { width:64px; padding:7px 9px;
+  font:500 12px/1.2 var(--mono); font-variant-numeric:tabular-nums; }
+.jrow .unit { color:var(--ink3); font-weight:450; }
+
+/* The one number in the card you act on, so it gets the accent edge and
+   nothing else does. */
+.next { display:flex; gap:10px; align-items:flex-start; background:var(--card);
+  border:1px solid var(--hair2); border-left:3px solid var(--acc);
+  border-radius:var(--r-xs); padding:10px var(--s3); }
+.next .lead { flex:1; min-width:0; }
+.next .hd { font:600 12px/1.3 var(--body); color:var(--ink); }
+.next .hd b { color:var(--acc); font-weight:600; font-variant-numeric:tabular-nums; }
+.next .sub { display:block; margin-top:4px; font:450 10.5px/1.4 var(--body); color:var(--ink3); }
+.next[data-live="broken"] { border-left-color:var(--badc); }
+.next[data-live="broken"] .hd b { color:var(--badc); }
+
+/* ── platform accordion ───────────────────────────────────────────────── */
+.accordion { display:flex; flex-direction:column; gap:var(--s2); }
+.pitem { background:var(--card); border:1px solid var(--hair2); border-radius:var(--r-sm);
+  overflow:hidden; }
+.pitem .plat { width:100%; }
+.plat { display:flex; align-items:center; gap:var(--s2); padding:10px var(--s3);
+  background:none; border:0; cursor:pointer; text-align:left; color:var(--ink); }
+.pitem .plat:hover { background:var(--field); }
+.plat .lead { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.plat .name { font:600 12.5px/1.2 var(--body); letter-spacing:-.015em; color:var(--ink); }
+.plat .who { font:450 10.5px/1.2 var(--body); color:var(--ink3); }
+.plat .state { display:inline-flex; align-items:center; gap:5px; font:550 10.5px/1 var(--body);
+  color:var(--ink3); }
+.plat .dot { background:var(--ink3); }
+.plat[data-state="live"] .state { color:var(--okc); }
+.plat[data-state="live"] .dot { background:var(--okc); }
+.plat[data-state="loading"] .state { color:var(--warnc); }
+.plat[data-state="loading"] .dot { background:var(--warnc); }
+.plat[data-state="dead"] .state { color:var(--badc); }
+.plat[data-state="dead"] .dot { background:var(--badc); }
+.plat[data-state="idle"] .state { color:var(--ink3); }
+.plat[data-state="off"] .state { color:var(--ink3); }
+.plat[data-state="off"] .who { color:var(--ink3); }
+.plat[data-active="true"] { background:color-mix(in srgb,var(--acc) 10%,transparent); }
+.plat[data-active="false"] .name { color:var(--ink2); }
+.plat[data-active="false"]:hover { background:var(--field); }
+.chev { flex:0 0 auto; width:7px; height:7px; border-right:1.5px solid var(--ink3);
+  border-bottom:1.5px solid var(--ink3); transform:rotate(45deg); margin-right:2px;
+  transition:transform .2s cubic-bezier(.32,.72,0,1); }
+.pitem[data-open="true"] .chev { transform:rotate(-135deg); }
+.pitem[data-open="true"] { border-color:var(--hair); }
+.pitem[data-open="true"] .plat { border-bottom:1px solid var(--hair2); }
+@media (prefers-reduced-motion:reduce){ .chev { transition:none; } }
+.pbody { padding:var(--s3); display:flex; flex-direction:column; gap:var(--s3); }
+.pbody:empty { display:none; }
+.pacts { display:flex; gap:var(--s2); }
+.pacts .btn { flex:1; }
+.phint { margin:0; font:450 10.5px/1.45 var(--body); color:var(--ink3); }
+.pform { display:flex; flex-direction:column; gap:var(--s3); }
+
+/* A pass the platform does not have is HIDDEN, not greyed: a budget is a
+   readout, and "5 outreach remaining" on WhatsApp is not a disabled feature,
+   it is a number that will never move. */
+[data-capability].unavailable { display:none; }
+[data-capability].unavailable .cap-note { display:none; }
+
+/* ── presets ──────────────────────────────────────────────────────────── */
+.preset-list { display:flex; flex-direction:column; gap:var(--s2); }
+.preset { background:var(--card); border:1px solid var(--hair2); border-radius:var(--r-sm);
+  padding:10px var(--s3); display:flex; align-items:center; gap:var(--s2); }
+.preset .lead { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.preset .name { font:600 12.5px/1.2 var(--body); letter-spacing:-.015em; color:var(--ink); }
+.preset .who { font:450 10.5px/1.2 var(--body); color:var(--ink3); }
+.preset-acts { display:flex; gap:6px; flex:0 0 auto; }
+.preset-acts .btn { flex:0 0 auto; padding:6px 10px; font-size:11px; }
+/* ONE brand fill per VIEW, and a list of presets is one view. `sidepanel.js`
+   marks each row's Load as primary, which is right about emphasis and wrong
+   about weight: three brand fills stacked down the tab is precisely the
+   "colour every CTA" failure that makes a system read as a theme. Load keeps
+   the accent — in the ink, not the fill — so it still leads its row while the
+   only brand fill in the panel stays on Start. */
+.preset-acts .btn.primary { background:var(--field); color:var(--acc);
+  border-color:color-mix(in srgb,var(--acc) 34%,transparent); box-shadow:none; }
+.preset-acts .btn.primary:hover:not(:disabled) { filter:none;
+  background:color-mix(in srgb,var(--acc) 14%,transparent); }
+
+.fleet { background:var(--card); border:1px solid var(--hair2); border-left:3px solid var(--acc);
+  border-radius:var(--r-sm); padding:10px var(--s3); }
+.fleet[data-bad="true"] { border-left-color:var(--badc); }
+.fleet-head { display:flex; align-items:center; justify-content:space-between; gap:var(--s2); }
+.fleet-head .lab { font:600 12px/1.2 var(--body); color:var(--ink); }
+.fleet-head .state { font:550 10.5px/1 var(--body); color:var(--okc); }
+.fleet-head .state[data-bad="true"] { color:var(--badc); }
+.fleet .sub { display:block; margin-top:5px; font:450 10.5px/1.4 var(--body); color:var(--ink3); }
+
+/* ── activity log ─────────────────────────────────────────────────────── */
+.log { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+.log li { display:flex; gap:9px; padding:7px 0; border-bottom:1px solid var(--hair2);
+  font:450 11px/1.4 var(--body); color:var(--ink2); }
+.log li:last-child { border-bottom:0; }
+.log time { flex:0 0 auto; font:500 10px/1.5 var(--mono); color:var(--ink3);
+  font-variant-numeric:tabular-nums; }
+.log li[data-level="info"] span { color:var(--ink2); }
+.log li[data-level="error"] span { color:var(--badc); }
+.empty { padding:var(--s4) 0; text-align:center; font:450 11.5px/1.5 var(--body);
+  color:var(--ink3); border:0; }
+
+#preset-paste { font:500 10.5px/1.5 var(--mono); }

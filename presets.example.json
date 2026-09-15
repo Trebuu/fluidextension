@@ -1,0 +1,82 @@
+{
+  "_readme": [
+    "COPY THIS TO presets.json TO USE IT. The file is read from the extension",
+    "folder, which every browser profile in an AdsPower-style fleet shares — so",
+    "one copy configures all of them.",
+    "",
+    "IT IS AUTHORITATIVE AND RE-APPLIED ON EVERY LAUNCH. Settings changed by hand",
+    "in a profile last until that profile next starts. That is the point: a rate",
+    "cap changed here has to land everywhere, including on the profile somebody",
+    "tweaked last week.",
+    "",
+    "If it does not parse, or names a platform this build does not know, NOTHING",
+    "is applied and every profile keeps the settings it already had. Check the",
+    "Presets tab — it says so there.",
+    "",
+    "Produce a real one with Presets -> Save -> Export rather than writing it by",
+    "hand; that guarantees the field names match the build you are running.",
+    "",
+    "`schedule` is each day's windows as [from, to], on this profile's OWN",
+    "clock — so a fleet on per-profile timezones keeps each account on local",
+    "hours. An end EARLIER than its start runs into the next day: Friday's",
+    "22:00-02:00 below is Friday night. Outside these hours the account is",
+    "silent: no sweep, no automatic replies, no follow-ups. A week that does",
+    "not parse fails CLOSED and the whole file is refused, because the",
+    "alternative is fifty real accounts running around the clock.",
+    "",
+    "`accounts` maps a signed-in handle to a preset name, which is how ONE file",
+    "serves a fleet running different characters: every profile reads the same",
+    "bytes and picks its own row once it knows which account it is. Unrecognised",
+    "handles get `default`, so a newly added account starts working rather than",
+    "sitting unconfigured."
+  ],
+  "fluidextension": 1,
+  "default": "telegram-main",
+  "accounts": {
+    "tg_account": "telegram-main",
+    "our_account": "instagram-main"
+  },
+  "presets": [
+    {
+      "fluidextension": 1,
+      "name": "telegram-main",
+      "bind": "telegram",
+      "token": "ftc_replace_me",
+      "platforms": {
+        "telegram": {
+          "autoSend": true,
+          "newThreadsPerHour": 5,
+          "newThreadsPerDay": 30,
+          "minReplyDelayMs": 4000,
+          "maxReplyDelayMs": 12000,
+          "followupsEnabled": true,
+          "followupStagesHours": "12,24,48",
+          "scheduleEnabled": true,
+          "schedule": {
+            "mon": [["09:00", "17:00"]],
+            "tue": [["09:00", "17:00"]],
+            "wed": [["09:00", "17:00"]],
+            "thu": [["09:00", "17:00"], ["19:00", "22:00"]],
+            "fri": [["22:00", "02:00"]]
+          },
+          "scheduleJitterMin": 10
+        }
+      }
+    },
+    {
+      "fluidextension": 1,
+      "name": "instagram-main",
+      "bind": "instagram",
+      "token": "ftc_replace_me_too",
+      "platforms": {
+        "instagram": {
+          "autoSend": true,
+          "newThreadsPerHour": 5,
+          "acceptRequests": true,
+          "commentsEnabled": false,
+          "outreachEnabled": false
+        }
+      }
+    }
+  ]
+}
