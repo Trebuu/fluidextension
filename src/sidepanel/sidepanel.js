@@ -78,8 +78,8 @@ function paintSettings(settings) {
   const held = boundHere && state.schedule?.enabled && !state.schedule.open;
   $("autoSend-sub").textContent = settings.autoSend
     ? held
-      ? "On, but held — the schedule has this account asleep, so nothing is answered."
-      : "On — answers new messages in this thread by itself."
+      ? "On, but asleep on the schedule."
+      : "Answers new messages in this thread by itself."
     : "Off — Generate drafts a reply and waits. Nothing is sent until you press Send.";
   $("describeUnreadable").checked = settings.describeUnreadable;
   $("followupsEnabled").checked = settings.followupsEnabled;
@@ -92,7 +92,7 @@ function paintSettings(settings) {
   $("followup-sub").textContent = stages.length
     ? `${stages.length} nudge${stages.length > 1 ? "s" : ""}: ${stages
         .map((h, i) => (i === 0 ? `#1 after ${describeHours(h)} quiet` : `#${i + 1} ${describeHours(h)} later`))
-        .join(", ")}. Then nothing.`
+        .join(", ")}.`
     : "No valid stages — nobody will be followed up.";
 
   paintSchedule(settings);
@@ -162,8 +162,8 @@ function paintSchedule(settings) {
   const on = Boolean(settings.scheduleEnabled);
   $("scheduleEnabled").checked = on;
   $("scheduleEnabled-sub").textContent = on
-    ? "Outside these hours the account is silent — no sweep, no automatic replies, no follow-ups."
-    : "Off — it runs when you press Start and stops when you press Stop.";
+    ? "Silent outside these hours."
+    : "Runs between Start and Stop.";
   $("schedule-card").hidden = !on;
   $("scheduleJitterMin").value = settings.scheduleJitterMin ?? 10;
 
@@ -199,7 +199,7 @@ function paintSchedule(settings) {
   if (!rows.length) {
     const p = document.createElement("p");
     p.className = "none";
-    p.textContent = "No days picked. With the schedule on and no window, nothing runs by itself.";
+    p.textContent = "No days picked — nothing runs by itself.";
     rows.push(p);
   }
   $("schedule-windows").replaceChildren(...rows);
@@ -311,13 +311,13 @@ async function refreshScheduleNext() {
     box.dataset.live = "true";
     hd.innerHTML = `Awake now — closes <b>${st.window.to}</b>`;
     const then = st.next ? `, then sleeps until ${DAY_LONG[st.next.day]} ${st.next.from}` : "";
-    sub.textContent = `In ${untilLabel(st.window.endAt)}. It finishes the conversation it is on${then}.`;
+    sub.textContent = `In ${untilLabel(st.window.endAt)} — finishes the conversation it is on${then}.`;
     return;
   }
   box.dataset.live = "false";
   if (!st.next) {
     hd.textContent = "Never opens";
-    sub.textContent = "No day is switched on, so nothing runs by itself.";
+    sub.textContent = "No day switched on — nothing runs by itself.";
     return;
   }
   const jitter = Math.round((st.next.opensAt - st.next.startAt) / 60000);
@@ -583,7 +583,7 @@ function paintPlatforms(info) {
         } else if (heldBy) {
           note.textContent = `Binding ${p.label} unbinds ${heldBy.label}.`;
         } else {
-          note.textContent = `Nothing is bound, so nothing is running.`;
+          note.textContent = `Nothing is bound.`;
         }
         body.append(note);
 
@@ -947,7 +947,7 @@ function paintSweep(sweep) {
       ? "The schedule cannot be read, so nothing runs by itself. Fix it in Settings, or press Run now."
       : sched.next
         ? `Asleep until ${DAY_LONG[sched.next.day]} ${sched.next.from}. Nothing is sent and nothing is answered for ${untilLabel(sched.next.opensAt)}.`
-        : "Asleep — no day is switched on, so nothing runs by itself.";
+        : "Asleep — no day switched on.";
     return;
   }
   if (!sweep || (!running && sweep.done === 0)) {
@@ -1373,9 +1373,9 @@ async function paintPresets() {
     $("fleet-state").dataset.bad = String(bad);
     box.dataset.bad = String(bad);
     $("fleet-sub").textContent = bad
-      ? `presets.json could not be used, so this profile kept its own settings: ${f.error}`
+      ? `presets.json unusable — settings kept: ${f.error}`
       : f?.name
-        ? `Applied from presets.json in the extension folder${f.handle ? ` for @${f.handle}` : ""}. It is re-applied on every launch, so changes made here are temporary.`
+        ? `Applied from presets.json${f.handle ? ` for @${f.handle}` : ""} — re-applied on every launch, so changes here are temporary.`
         : "presets.json is present in the extension folder.";
   }
 

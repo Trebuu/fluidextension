@@ -140,16 +140,14 @@
         <span>Character token</span>
         <input id="connectorToken" type="password" placeholder="ftc_…" autocomplete="off" spellcheck="false" />
         <small>
-          Per-character token from the FluidTalk dashboard — the token <em>is</em>
-          the character.
+          From the FluidTalk dashboard — it <em>is</em> the character.
         </small>
       </label>
 
       <hr class="rule" />
 
       <p class="hint">
-        <b>Only one platform can be bound</b> — binding another unbinds the
-        first. Every platform keeps its own settings.
+        <b>One platform at a time</b> — binding another unbinds the first.
       </p>
 
       <!-- One row per platform, built in JS. The form below is MOVED into
@@ -201,7 +199,7 @@
           <input id="scheduleJitterMin" type="number" min="0" max="60" step="1" />
           <span class="unit">min of the window</span>
         </div>
-        <small>Derived from the account, so a fleet on one preset does not wake together.</small>
+        <small>So a fleet on one preset does not wake together.</small>
         <!-- The readout comes from the WORKER, not from a calendar in here:
              "opens Monday 09:04" has to be the sentence the tick is acting on. -->
         <div class="next" id="schedule-next" data-live="false">
@@ -222,12 +220,12 @@
           <input id="newThreadsPerDay" type="number" min="0" step="1" />
         </label>
       </div>
-      <small>Counts only threads we have never replied in.</small>
+      <small>Only threads we have never replied in.</small>
 
       <label class="field">
         <span>Ignore threads older than</span>
         <input id="maxThreadAgeDays" type="number" min="0" step="1" />
-        <small>Days. 0 = no limit. An age we cannot read is not filtered.</small>
+        <small>Days. 0 = no limit.</small>
       </label>
 
       <div class="field row">
@@ -271,8 +269,7 @@
         <span>
           <span class="lab">Answer media we can't open</span>
           <span class="sub">
-            Never reaches the browser. On, the character is told
-            <em>"sent a disappearing photo"</em>; off, the thread is skipped.
+            Told <em>"sent a disappearing photo"</em>; off, skipped.
           </span>
         </span>
         <input id="describeUnreadable" type="checkbox" />
@@ -284,7 +281,7 @@
       <label class="check">
         <span>
           <span class="lab">Follow up when they go quiet</span>
-          <span class="sub">Nudges leads who stopped replying after we spoke last.</span>
+          <span class="sub">Nudges leads who went quiet.</span>
         </span>
         <input id="followupsEnabled" type="checkbox" />
       </label>
@@ -303,8 +300,7 @@
         <span>
           <span class="lab">Comment on posts</span>
           <span class="sub">
-            Public — everyone who sees the post sees this. Also needs Comments on
-            for the character in FluidTalk.
+            Public. Also needs Comments on in FluidTalk.
           </span>
         </span>
         <input id="commentsEnabled" type="checkbox" />
@@ -337,7 +333,7 @@
       <label class="field">
         <span>Posts to scan per run</span>
         <input id="feedScanLimit" type="number" min="1" step="1" />
-        <small>A bigger number means more scrolling.</small>
+        <small>More posts, more scrolling.</small>
       </label>
 
       <div class="actions">
@@ -355,8 +351,7 @@
         <span>
           <span class="lab">Answer replies to my comments</span>
           <span class="sub">
-            Reply under a comment we left. FluidTalk decides whether to answer,
-            nudge them to the DMs, or bow out.
+            FluidTalk answers, nudges to the DMs, or bows out.
           </span>
         </span>
         <input id="commentRepliesEnabled" type="checkbox" />
@@ -386,7 +381,7 @@
       <label class="check">
         <span>
           <span class="lab">Cold DM my followers</span>
-          <span class="sub">The only thing here that messages someone who has not written to us. Runs after the inbox.</span>
+          <span class="sub">The only thing here that messages people who never wrote to us.</span>
         </span>
         <input id="outreachEnabled" type="checkbox" />
       </label>
@@ -440,8 +435,7 @@
            rebinds the extension — both things somebody should know before
            pressing Load. -->
       <p class="hint">
-        A preset is this whole setup. Save one, then <b>Export</b> it to set up
-        another browser profile without filling the form in again.
+        The whole setup, <b>Export</b>ed to another browser profile.
       </p>
 
       <!-- The fleet file, when there is one. Hidden on an ordinary install:
@@ -462,8 +456,7 @@
         <span>
           <span class="lab">Include the character token</span>
           <span class="sub">
-            On, this preset can set up a profile completely on its own. Anyone
-            who gets the file can send messages as this character.
+            Anyone who gets the file can send messages as this character.
           </span>
         </span>
         <input id="preset-with-token" type="checkbox" checked />
