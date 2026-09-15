@@ -1588,12 +1588,36 @@ for (const tab of document.querySelectorAll(".tab")) {
   });
 }
 
-// The first placement has to wait for layout — at parse time the rail has no
-// width and the indicator would sit at x=0 with a 0 scale. A resize re-measures
-// for the same reason: the panel is user-resizable, so the rail's columns are
-// not fixed for the life of the page.
+/**
+ * Place the indicator as soon as the rail HAS a box — which is not the same
+ * moment the script runs, and not a frame later either.
+ *
+ * ⚠ `requestAnimationFrame` DOES NOT FIRE IN A HIDDEN PAGE, and a docked side
+ * panel is hidden until Chrome shows it. Placing on one rAF therefore worked in
+ * a tab and silently did nothing in the real panel: the indicator kept
+ * `transform: none` and `opacity: 0`, so the rail showed no selection at all.
+ * Measured that way — `document.hidden === true`, rail laid out, dot unplaced.
+ *
+ * A ResizeObserver is the honest trigger: it fires when the element actually
+ * gets a box, including the first time the panel is shown, and again whenever
+ * the user drags the panel wider. `visibilitychange` covers the case where the
+ * box never changes size between hidden and shown.
+ */
 const placeTabDot = () => moveTabDot(document.querySelector(".tab.is-active"));
-requestAnimationFrame(placeTabDot);
+
+const tabRail = document.querySelector(".tabs");
+if (tabRail) {
+  new ResizeObserver(() => {
+    if (!tabRail.offsetWidth) return;
+    placeTabDot();
+    // One frame later, so the FIRST placement is not itself animated — see the
+    // note on `.tabs.dot-ready .tabdot` in the stylesheet.
+    requestAnimationFrame(() => tabRail.classList.add("dot-ready"));
+  }).observe(tabRail);
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) placeTabDot();
+});
 addEventListener("resize", placeTabDot);
 
 // ── live updates ─────────────────────────────────────────────────────────────

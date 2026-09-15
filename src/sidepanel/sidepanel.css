@@ -197,7 +197,17 @@ body {
   padding:7px 0; border-radius:var(--r-xs); cursor:pointer;
 }
 .tab:hover { color:var(--ink2); }
-.tab.is-active { color:var(--ink); }
+/* ⚠ THE ACTIVE TAB KEEPS ITS OWN BACKGROUND, and that is the whole safety net.
+   The travelling indicator below is an ENHANCEMENT layered on top; it is placed
+   by JS, and JS that measures a box cannot run in a page that has never been
+   laid out. A docked side panel starts HIDDEN — `requestAnimationFrame` does
+   not fire there — so for one build this rule was deleted in favour of the
+   indicator and the result was a tab rail with no selection marked at all.
+   Never let the only highlight depend on a measurement. */
+.tab.is-active { color:var(--ink); background:color-mix(in srgb,var(--ink) 13%,transparent); }
+/* Once the indicator is really placed it takes over, and the flat background
+   steps aside so the two do not stack into a double-bright pill. */
+.tabs.dot-ready .tab.is-active { background:transparent; }
 .tab:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
 
 /* THE TRAVELLING SELECTION.
@@ -215,13 +225,19 @@ body {
     inset 0 1px 0 color-mix(in srgb,#fff 16%,transparent),
     0 1px 3px color-mix(in srgb,#000 22%,transparent);
   transform-origin:left center;
-  transition:transform .42s cubic-bezier(.32,1.28,.38,1);
   pointer-events:none;
+  opacity:0;
 }
-/* Before the first measurement there is nothing to show. Painting a 0-width
-   slab at x=0 flashes a sliver in the corner on every panel open. */
-.tabdot:not([style*="width"]) { opacity:0; }
-@media (prefers-reduced-motion:reduce){ .tabdot { transition:none; } }
+/* Shown only once JS has actually measured a box. Until then the flat
+   background above is doing the job, so nothing is ever unmarked. */
+.tabs.dot-ready .tabdot { opacity:1; }
+/* ⚠ THE TRANSITION IS ON THE READY CLASS, NOT ON .tabdot.
+   The first placement sets `transform` from `none`, and a transition already
+   armed would animate that — the indicator would slide in from the left edge
+   on every single panel open. Ready is added one frame AFTER the first
+   placement, so the opening move is instant and every later one springs. */
+.tabs.dot-ready .tabdot { transition:transform .42s cubic-bezier(.32,1.28,.38,1); }
+@media (prefers-reduced-motion:reduce){ .tabs.dot-ready .tabdot { transition:none; } }
 
 /* ── the scrolling work ───────────────────────────────────────────────── */
 .panel {
