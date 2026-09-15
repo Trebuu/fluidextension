@@ -321,9 +321,22 @@ body {
    inline so `flex:1` alone would leave three links of three different widths
    with the text hugging the left edge. */
 a.btn {
-  display:flex; align-items:center; justify-content:center;
+  display:flex; align-items:center; justify-content:center; gap:6px;
   text-align:center; text-decoration:none;
 }
+/* The official marks, inlined. `currentColor` is the whole trick: the glyph
+   takes the button's own ink, so it stays legible in any tone and cannot end
+   up as a brand colour fighting the panel. `flex:0 0 auto` because a logo is
+   not a thing to squash when the label beside it wraps. */
+a.btn .ico { width:13px; height:13px; flex:0 0 auto; fill:currentColor; }
+
+/* THE FOOT OF EVERY TAB, not a bar across the bottom. `margin-top:auto` is
+   what pins it: the panels are flex columns, so this pushes the block to the
+   end even on a tab whose content does not fill the height — without it,
+   Activity with three log lines would show the links floating under them
+   halfway up the panel. */
+.community { margin-top:auto; padding-top:var(--s4); }
+.community > span { color:var(--ink3); }
 .btn:hover:not(:disabled) { background:color-mix(in srgb,var(--ink) 11%,transparent); }
 .btn:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
 .btn:disabled { color:var(--ink3); cursor:not-allowed; opacity:.55; }

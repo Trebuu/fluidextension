@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FluidExtension",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Reply to Instagram DMs with a FluidTalk character, from a side panel.",
   "minimum_chrome_version": "114",
   "icons": {

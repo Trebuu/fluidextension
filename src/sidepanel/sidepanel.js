@@ -1698,6 +1698,30 @@ chrome.tabs.onRemoved.addListener(refreshAll);
 chrome.tabs.onCreated.addListener(refreshAll);
 
 /**
+ * Put the community links at the foot of every tab.
+ *
+ * Cloned from one <template> rather than written out four times, so a link
+ * that changes changes once. Appended LAST in each panel, which is what makes
+ * it the foot: the panels are flex columns in document order.
+ *
+ * Not a fixed bar across the bottom, deliberately — the Inbox already floats
+ * the run bar there, and two floating bars would sit on top of each other.
+ * Scrolling to the end of a tab to find it is also the behaviour people expect
+ * of a footer.
+ */
+function mountCommunity() {
+  const tpl = document.getElementById("community-tpl");
+  if (!tpl) return;
+  for (const panel of document.querySelectorAll(".panel")) {
+    // Idempotent: refreshAll repaints panels, and a second copy per repaint
+    // would stack up for as long as the panel stays open.
+    if (panel.querySelector(".community")) continue;
+    panel.append(tpl.content.cloneNode(true));
+  }
+}
+mountCommunity();
+
+/**
  * An ⓘ inside a <label> must not operate the label's control.
  *
  * A label forwards any click inside it to its input, so pressing the info
