@@ -25,6 +25,13 @@ own. Read this table before you point it at an account you care about.
 | `scheduleEnabled` | off | when on, confines all of the above to set hours |
 | `newThreadsPerHour` | 5 | caps *first* replies into never-answered threads (see below) |
 
+It also **checks for a new release**, at most once every six hours, by GETting
+`extension.fluidvip.com/releases/latest.json`. Chrome does not do this for an
+unpacked install — `requestUpdateCheck()` is a no-op without an `update_url`,
+and self-hosted updates are Linux-only — so a copy sits on whatever version it
+was unzipped at until somebody notices. The request **sends nothing**: no token,
+no handle, not even the installed version. See SECURITY.md.
+
 Not every platform has every capability — the set is declared per platform in
 `src/lib/platforms.js`. **Instagram and Threads have all six; Telegram Web and
 WhatsApp Web have DMs and follow-ups.**

@@ -1118,6 +1118,66 @@ function paintLog(entries) {
 
 const truncate = (s, n) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/* ── update banner ──────────────────────────────────────────────────────────
+   Chrome will not tell an unpacked install that a release exists — measured,
+   `requestUpdateCheck` answers `no_update` with an empty version — so the
+   worker asks our own feed and this paints the answer.
+
+   DISMISSAL IS PER VERSION. "Later" hides 0.3.0 and nothing else; 0.3.1 says so
+   again. A notice that stays dismissed for ever is an advert, and the next real
+   one is ignored along with it. */
+const UPDATE_DISMISSED_KEY = "fluidextension.updateDismissed";
+
+async function paintUpdate() {
+  const el = $("update-banner");
+  if (!el) return;
+
+  const r = await bg("ft:update-check").catch(() => null);
+  if (!r?.newer || !r.latest) {
+    el.hidden = true;
+    return;
+  }
+
+  const { [UPDATE_DISMISSED_KEY]: dismissed } = await chrome.storage.local.get(UPDATE_DISMISSED_KEY);
+  if (dismissed === r.latest) {
+    el.hidden = true;
+    return;
+  }
+
+  $("update-head").textContent = `Version ${r.latest} is out`;
+  $("update-sub").textContent =
+    `You have ${r.current}${r.size ? ` · ${r.size}` : ""} · unzip over the folder, then Reload`;
+
+  const get = $("update-get");
+  // No download link in the feed means the button would go nowhere. Hide it
+  // rather than ship an <a href="null">.
+  get.hidden = !r.download;
+  if (r.download) get.href = r.download;
+
+  el.hidden = false;
+}
+
+(function wireUpdateBanner() {
+  const hide = $("update-hide");
+  const reload = $("update-reload");
+  if (hide) {
+    hide.addEventListener("click", async () => {
+      const r = await bg("ft:update-check").catch(() => null);
+      if (r?.latest) await chrome.storage.local.set({ [UPDATE_DISMISSED_KEY]: r.latest });
+      $("update-banner").hidden = true;
+    });
+  }
+  if (reload) {
+    reload.addEventListener("click", () => {
+      /* ⚠ DO NOT AWAIT THIS. `chrome.runtime.reload()` tears the worker down
+         mid-call, so the reply never arrives and an await would hang here
+         until the panel itself is destroyed — looking like a dead button on
+         the way out. Fire it and let the reload happen. */
+      bg("ft:reload-extension").catch(() => {});
+    });
+  }
+})();
+
 // ── loading ──────────────────────────────────────────────────────────────────
 
 async function refreshAll() {
@@ -1144,6 +1204,10 @@ async function refreshAll() {
   if (state.openPlatform === st.platform?.id) paintOwnHandle(st.ownHandle);
   paintLog(st.log);
   paintQuota(st.quotas);
+  // Not awaited: the check is throttled to once every six hours and answers
+  // from cache in between, but a cold call still crosses the network, and the
+  // rest of this repaint must not wait on a version number.
+  paintUpdate().catch(() => {});
   paintSweep(st.sweep);
 
   if (!st.platform) {

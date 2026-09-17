@@ -12,6 +12,7 @@
  * a module-level variable — per-thread state goes to `chrome.storage.session`.
  */
 
+import { checkForUpdate } from "./lib/update.js";
 import {
   chat,
   checkToken,
@@ -4789,6 +4790,32 @@ const handlers = {
     return { ...st, platform: id, day: DAY_NAMES, now: Date.now() };
   },
   "ft:quota": () => allQuotas(),
+  /**
+   * Is there a newer release?
+   *
+   * IN THE WORKER, not the panel, for the same reason the connector token is:
+   * the fetch belongs where the host permissions do, and the panel should ask a
+   * question rather than know a URL. `checkForUpdate` throttles itself and never
+   * throws — the panel calls this on a repaint, and a rejection there would
+   * abandon the rest of the paint.
+   */
+  "ft:update-check": ({ force = false } = {}) => checkForUpdate({ force }),
+  /**
+   * Apply an update the user has already unzipped over the folder.
+   *
+   * `chrome.runtime.reload()` re-reads the extension FROM DISK — the same
+   * behaviour CONTRIBUTING.md documents for picking up an edited worker. It
+   * cannot download or write anything, so this is the second half of a manual
+   * update, not an installer: the button only exists because the alternative is
+   * telling somebody to find chrome://extensions and click a circular arrow.
+   *
+   * Nothing is returned. The reload kills this worker mid-call, so the panel
+   * must not wait on a reply.
+   */
+  "ft:reload-extension": () => {
+    chrome.runtime.reload();
+    return { reloading: true };
+  },
   // Pass-throughs to the page, so the sweep's own steps can be driven one at a
   // time when it misbehaves. Without these the only way to exercise them is to
   // run a whole sweep and read the log.

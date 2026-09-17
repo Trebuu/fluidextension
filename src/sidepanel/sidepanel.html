@@ -51,6 +51,24 @@
 
     <!-- ── Inbox ─────────────────────────────────────────────────────────── -->
     <section class="panel is-active" data-panel="inbox">
+      <!-- A release exists and this install does not have it.
+           HIDDEN UNLESS TRUE, and dismissible per version: an update notice
+           that survives being dismissed is an advert, and the next real one
+           gets ignored with it. Chrome cannot tell us this — requestUpdateCheck
+           is a no-op on an unpacked install — so it comes from our own feed;
+           see src/lib/update.js. -->
+      <div class="update" id="update-banner" hidden>
+        <div class="update-said">
+          <strong id="update-head">Update available</strong>
+          <span id="update-sub"></span>
+        </div>
+        <div class="update-acts">
+          <a class="btn primary sm" id="update-get" target="_blank" rel="noopener noreferrer">Download</a>
+          <button class="btn sm" id="update-reload" title="Once you have unzipped the new folder over the old one, this re-reads it from disk.">Reload</button>
+          <button class="btn ghost sm" id="update-hide" aria-label="Dismiss until the next release">Later</button>
+        </div>
+      </div>
+
       <!-- The platform list lives in SETTINGS now. Choosing a platform is a
            setup act, not something to do mid-conversation, and the header pill
            already answers "which one am I on" from here. -->
