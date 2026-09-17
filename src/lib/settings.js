@@ -310,6 +310,30 @@ export const PLATFORM_DEFAULTS = {
   maxThreadAgeDays: 0,
 };
 
+/**
+ * Defaults that differ for ONE platform.
+ *
+ * `PLATFORM_DEFAULTS` is deliberately one object for every platform: a default
+ * that varies per platform is a thing to explain, and most of them are not.
+ * This is the exception list, and it is short on purpose.
+ *
+ * WHATSAPP FOLLOW-UPS ARE OFF HERE BECAUSE THEY CAN COST THE ACCOUNT. The
+ * capability is real — the adapter sends them fine — and one of them signed a
+ * linked session out on 2026-09-15 after a single message. It used to be
+ * declared absent, which hid the switch entirely and, with it, the reason. A
+ * control that is present, off, and labelled with what it did is a better
+ * warning than a control that is missing: see `riskyCapabilities` on WhatsApp
+ * in platforms.js, whose text is what the panel shows on the info tip.
+ *
+ * ⚠ THESE ARE DEFAULTS, NOT A CEILING. A stored value always wins — see
+ * `loadSettings` — so switching it on survives a reload, as it must: an
+ * override that silently re-disabled the thing every read would be a block
+ * wearing a default's clothes.
+ */
+export const PLATFORM_OVERRIDES = {
+  whatsapp: { followupsEnabled: false },
+};
+
 /** Is this setting an install-wide one, or one platform's? */
 export function isGlobalKey(key) {
   return Object.hasOwn(GLOBAL_DEFAULTS, key);
@@ -444,6 +468,11 @@ export async function loadSettings(platformId = null) {
   const { configured: _configured, ...mine } = platformId ? (store.platforms?.[platformId] ?? {}) : {};
   return {
     ...PLATFORM_DEFAULTS,
+    // AFTER the shared defaults and BEFORE `mine`: this changes what a platform
+    // starts as, never what it is once somebody has chosen. Putting it after
+    // `mine` would re-disable WhatsApp follow-ups on every read, which is a
+    // block pretending to be a default.
+    ...(platformId ? (PLATFORM_OVERRIDES[platformId] ?? {}) : {}),
     ...GLOBAL_DEFAULTS,
     connectorToken: store.connectorToken ?? "",
     historyLimit: store.historyLimit ?? GLOBAL_DEFAULTS.historyLimit,

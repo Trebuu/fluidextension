@@ -57,28 +57,45 @@
 
       <!-- Budgets first: they decide what happens next, so they answer
            "why did it skip everyone" before the conversation is even read. -->
+      <!-- IN RUN ORDER, the same order the worker performs the passes in and the
+           same order the Start button describes them. One list read two ways was
+           two lists to keep in step.
+
+           HIDDEN rather than greyed where the pass will not run — see
+           `BUDGETS` in sidepanel.js for which two things hide one. A budget is a
+           readout, not a control: "5 outreach remaining" for a pass that is
+           switched off is a number that will never move and cannot mean
+           anything, and a greyed number still reads as a number. -->
       <div class="budgets">
-        <div class="budget">
+        <div class="budget" id="q-new">
           <div class="n" id="q-new-n">—</div>
-          <div class="k">New</div>
+          <div class="k">Replies</div>
           <div class="meter"><i id="q-new-bar" style="width:0%"></i></div>
           <div class="sub" id="q-new-sub"></div>
         </div>
-        <!-- HIDDEN rather than greyed where the platform has no such pass: a
-             budget is a readout, not a control, and "5 outreach remaining" on
-             WhatsApp is not a disabled feature, it is a number that will never
-             move and cannot mean anything. -->
-        <div class="budget" data-capability-hide="outreach">
-          <div class="n" id="q-out-n">—</div>
-          <div class="k">Outreach</div>
-          <div class="meter"><i id="q-out-bar" style="width:0%"></i></div>
-          <div class="sub" id="q-out-sub"></div>
-        </div>
-        <div class="budget" data-capability-hide="requests">
+        <div class="budget" id="q-req">
           <div class="n" id="q-req-n">—</div>
           <div class="k">Requests</div>
           <div class="meter"><i id="q-req-bar" style="width:0%"></i></div>
           <div class="sub" id="q-req-sub"></div>
+        </div>
+        <div class="budget" id="q-rep">
+          <div class="n" id="q-rep-n">—</div>
+          <div class="k">Comment replies</div>
+          <div class="meter"><i id="q-rep-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-rep-sub"></div>
+        </div>
+        <div class="budget" id="q-com">
+          <div class="n" id="q-com-n">—</div>
+          <div class="k">Comments</div>
+          <div class="meter"><i id="q-com-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-com-sub"></div>
+        </div>
+        <div class="budget" id="q-out">
+          <div class="n" id="q-out-n">—</div>
+          <div class="k">Cold DMs</div>
+          <div class="meter"><i id="q-out-bar" style="width:0%"></i></div>
+          <div class="sub" id="q-out-sub"></div>
         </div>
       </div>
 
@@ -276,7 +293,15 @@
 <div data-capability="followups">
       <label class="check">
         <span>
-          <span class="lab">Follow up when they go quiet</span>
+          <!-- The Risky badge and the tip text are both filled in by
+               `paintCapabilities` from the platform's `riskyCapabilities`, and
+               removed again on a platform where this is ordinary. A risk that is
+               true of one platform must not be worded as if it were true of all
+               of them — Instagram has tolerated follow-ups for months. -->
+          <span class="lab">Follow up when they go quiet<span id="followups-risk" class="risk" hidden>Risky</span>
+            <button type="button" class="info" id="followups-info"
+              aria-label="A nudge to a lead who went quiet. Nobody asked for it, so treat it as the most exposed thing the extension does."
+              data-tip="A nudge to a lead who went quiet. Nobody asked for it, so treat it as the most exposed thing the extension does."></button></span>
         </span>
         <input id="followupsEnabled" type="checkbox" />
       </label>

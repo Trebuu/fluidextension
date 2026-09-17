@@ -353,12 +353,10 @@ async function refreshScheduleNext() {
  */
 function paintCapabilities(platform) {
   const caps = platform?.capabilities ?? null;
-  // Readouts, not controls: a budget for a pass this platform cannot run is
-  // removed rather than disabled — there is nothing to explain and nothing to
-  // switch on, and a greyed number still reads as a number.
-  for (const block of document.querySelectorAll("[data-capability-hide]")) {
-    block.hidden = Boolean(caps) && !caps.includes(block.dataset.capabilityHide);
-  }
+  // The Inbox budgets are NOT painted here any more — see
+  // `paintBudgetVisibility`. This function is called with the platform whose
+  // settings row is OPEN, which is the right scope for greying a form and the
+  // wrong one for a readout about the account being worked.
   for (const block of document.querySelectorAll("[data-capability]")) {
     const cap = block.dataset.capability;
     const off = Boolean(caps) && !caps.includes(cap);
@@ -391,6 +389,51 @@ function paintCapabilities(platform) {
     } else if (note) {
       note.remove();
     }
+  }
+  paintRisk(platform);
+}
+
+/**
+ * Capabilities that work and can cost you the account.
+ *
+ * ⚠ THE RISK IS THE PLATFORM'S, NOT THE FEATURE'S. Follow-ups are ordinary on
+ * Instagram and have run for months; on WhatsApp one of them signed a linked
+ * session out. So the badge and the tip are read from the platform declaration
+ * and CLEARED again on a platform that does not flag it — a permanent "Risky"
+ * on a control that is fine here would be noise, and noise is what gets ignored
+ * on the one screen where it is true.
+ *
+ * This exists because the alternative was worse: WhatsApp follow-ups used to be
+ * declared absent, which hid the whole block, so the person deciding saw no
+ * switch and no reason. A present control, defaulted off, carrying the sentence
+ * that explains the risk, tells them something. A missing one tells them the
+ * platform cannot do it, which is false.
+ *
+ * The static `data-tip` in the markup is the ordinary description and is
+ * restored verbatim when the risk does not apply, so this cannot leave one
+ * platform's warning on another's screen.
+ */
+const RISK_CONTROLS = {
+  followups: { badge: "followups-risk", info: "followups-info" },
+};
+
+function paintRisk(platform) {
+  for (const [cap, ids] of Object.entries(RISK_CONTROLS)) {
+    const badge = $(ids.badge);
+    const info = $(ids.info);
+    if (!badge || !info) continue;
+
+    // Remember the ordinary wording once, so restoring it later is exact rather
+    // than a second copy of the sentence that can drift from the markup.
+    if (info.dataset.tipDefault === undefined) info.dataset.tipDefault = info.dataset.tip ?? "";
+
+    const risk = platform?.riskyCapabilities?.[cap] ?? null;
+    badge.hidden = !risk;
+    const tip = risk ?? info.dataset.tipDefault;
+    info.dataset.tip = tip;
+    // Both, because the tip is a hover and the label is what a screen reader
+    // gets — a warning only sighted users can reach is not a warning.
+    info.setAttribute("aria-label", tip);
   }
 }
 
@@ -829,14 +872,70 @@ function untilLabel(at) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+/**
+ * The budgets, in the order the worker runs the passes.
+ *
+ * ONE ROW PER PASS THAT IS ACTUALLY GOING TO RUN. A budget answers "why did it
+ * skip everyone", so a budget for a pass that cannot run answers a question
+ * nobody asked — and two different things stop a pass:
+ *
+ *   - `capability`: the platform does not have it. WhatsApp has no feed to
+ *     comment on, and no switch will give it one.
+ *   - `setting`: it has it and it is switched OFF for this platform.
+ *
+ * Both hide the row, and they are genuinely different: the first is permanent
+ * and the second is one click away, which is why the Settings tab still greys
+ * (rather than hides) the controls behind them. Here there is no control — only
+ * a number that would never move.
+ *
+ * `newThread` has NO setting, and that is deliberate rather than an omission.
+ * It caps first replies into never-answered threads, and a manual send is
+ * *recorded but never blocked* (see `sendBubbles` in background.js), so the
+ * number keeps moving with `autoSend` off — hiding it would hide a live count.
+ *
+ * Follow-ups are absent because they have no cap at all: there is no number to
+ * show. The Start description still lists them.
+ */
+const BUDGETS = [
+  { cell: "q-new", quota: "newThread", capability: "dm", setting: null },
+  { cell: "q-req", quota: "request", capability: "requests", setting: "acceptRequests" },
+  { cell: "q-rep", quota: "commentReply", capability: "commentReplies", setting: "commentRepliesEnabled" },
+  { cell: "q-com", quota: "comment", capability: "comments", setting: "commentsEnabled" },
+  { cell: "q-out", quota: "outreach", capability: "outreach", setting: "outreachEnabled" },
+];
+
+/**
+ * Show a budget only where its pass will run.
+ *
+ * ⚠ THE ACTIVE PLATFORM, NOT THE ONE WHOSE SETTINGS ROW IS OPEN. This used to
+ * ride on `paintCapabilities`, which is deliberately called with the FORM's
+ * platform — so the Inbox budgets followed whichever Settings row happened to be
+ * expanded, and with none expanded they were all shown on every platform,
+ * including outreach on WhatsApp. The budgets describe the account being worked;
+ * the form describes the account being edited. They are routinely different.
+ *
+ * Reads `state.settings` for the same reason — those are the ACTIVE platform's
+ * (see `refreshAll`), while the form edits `state.formSettings`.
+ */
+function paintBudgetVisibility() {
+  const caps = state.platform?.capabilities ?? null;
+  const s = state.settings ?? {};
+  for (const b of BUDGETS) {
+    const el = $(b.cell);
+    if (!el) continue;
+    const hasCapability = !caps || caps.includes(b.capability);
+    const switchedOn = !b.setting || s[b.setting] !== false;
+    el.hidden = !(hasCapability && switchedOn);
+  }
+}
+
 function paintQuota(quotas) {
   if (!quotas) return;
   state.quotas = quotas;
-  const cells = [
-    ["q-new", quotas.newThread],
-    ["q-out", quotas.outreach],
-    ["q-req", quotas.request],
-  ];
+  // Visibility is about settings and capabilities, not about the numbers — but
+  // this runs on every refresh, so it is the cheapest place to keep it honest.
+  paintBudgetVisibility();
+  const cells = BUDGETS.map((b) => [b.cell, quotas[b.quota]]);
 
   for (const [id, q] of cells) {
     if (!q) continue;
@@ -1222,9 +1321,24 @@ function bindSetting(id, { event = "change", parse = (v) => v } = {}) {
 function bindCheck(id) {
   $(id).addEventListener("change", async (e) => {
     await saveSetting({ [id]: e.target.checked });
-    // These switches change what Start will DO, and its description is built
-    // from them — repaint it now rather than leaving a stale promise on screen.
-    paintSweep(state.sweep);
+    /**
+     * These switches change what Start will DO and which budgets the Inbox
+     * shows, so both are rebuilt here.
+     *
+     * ⚠ `refreshAll`, NOT a local repaint. This was `paintSweep(state.sweep)`,
+     * which rebuilds the Start description from `state.settings` — and nothing
+     * had updated `state.settings`. `saveSetting` writes `state.formSettings`
+     * (the row being edited), and the 30s poll deliberately refreshes only the
+     * schedule, so the only writer is `refreshAll` and the only things that call
+     * it are tab and window events. Flip a switch and look at the panel without
+     * touching a tab, and the promise under Start stayed stale indefinitely.
+     *
+     * Going through the worker also gets the scope right for free: the form
+     * edits whichever platform's row is open, which is routinely NOT the one
+     * being worked, and `refreshAll` re-reads the ACTIVE platform's settings.
+     * Toggling comments for WhatsApp must not change the budgets for Threads.
+     */
+    await refreshAll();
   });
 }
 

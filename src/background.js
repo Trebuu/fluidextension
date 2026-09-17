@@ -4567,6 +4567,22 @@ const handlers = {
           active: p.id === active,
           handle: handleOn(store, p.id) || null,
           capabilities: p.capabilities,
+          /**
+           * ⚠ THE PANEL LOOKED THESE UP AND THEY WERE NEVER SENT.
+           *
+           * `paintCapabilities` has read `platform.blockedCapabilities` to
+           * explain a missing pass since blocking existed, and these rows are
+           * where its `platform` comes from — so the lookup silently fell back
+           * to "This platform has no X" every time. Nobody noticed because a
+           * blocked block is `display:none` and takes its own explanation with
+           * it, so the sentence had no way to reach a screen either.
+           *
+           * It surfaced when `riskyCapabilities` needed the same trip: the
+           * WhatsApp badge and its warning simply never appeared, and the panel
+           * could not say why because it had never been told.
+           */
+          blockedCapabilities: p.blockedCapabilities ?? {},
+          riskyCapabilities: p.riskyCapabilities ?? {},
         };
       }),
     );

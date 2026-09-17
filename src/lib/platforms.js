@@ -132,23 +132,18 @@ export const PLATFORMS = [
     // No `outreach`, `requests`, `comments` or `commentReplies`: WhatsApp has
     // no followers list, no message-requests folder and nothing public to
     // comment on. Declaring them would make a sweep fail four passes a run
-    // instead of skipping them.
-    //
-    // ⚠ `followups` IS ABSENT ON PURPOSE, AND THE ADAPTER CAN DO IT.
-    // It is recorded in `blockedCapabilities` below rather than simply deleted,
-    // so the reason travels with the decision and turning it back on is one
-    // line rather than an archaeology exercise.
-    capabilities: ["dm"],
+    // instead of skipping them. `followups` is here but RISKY — see below.
+    capabilities: ["dm", "followups"],
 
     /**
-     * Capabilities this adapter implements but must not use here.
+     * Capabilities that work, and can cost you the account.
      *
-     * WHY FOLLOW-UPS ARE BLOCKED ON WHATSAPP, measured 2026-09-15.
+     * ⚠ A FOLLOW-UP ON WHATSAPP SIGNED THE ACCOUNT OUT, measured 2026-09-15.
      *
      * A follow-up is an UNSOLICITED outbound message — we start it; the lead
      * did not just write. WhatsApp treats one of those from a linked web
-     * session as abuse and drops the session: the account is signed out, and it
-     * took exactly one message.
+     * session as abuse and drops the session: the account was signed out, and
+     * it took exactly one message.
      *
      * The extension's own log of the run that did it:
      *
@@ -167,12 +162,19 @@ export const PLATFORMS = [
      * Note `(quiet unknown)`: it could not even establish how long that lead
      * had been silent, so the nudge fired without the silence it is named for.
      *
-     * Instagram keeps follow-ups; it tolerates them. If WhatsApp ever changes,
-     * move "followups" back into `capabilities` and delete this entry.
+     * ⚠ THIS WAS A BLOCKED CAPABILITY AND IS NOT ANY MORE — the owner's call,
+     * 2026-09-17. Declaring it absent meant the settings block was hidden
+     * outright, so the one measurement that matters here was invisible to the
+     * person deciding: the switch was missing with no explanation, which reads
+     * as "WhatsApp cannot do this" rather than "this cost us an account". It is
+     * now a real capability, DEFAULT OFF for WhatsApp alone (see
+     * `PLATFORM_OVERRIDES` in settings.js) and labelled Risky in the panel with
+     * this sentence on its info tip. Off-by-default plus a stated reason beats
+     * an absent control: whoever turns it on has read why not to.
      */
-    blockedCapabilities: {
+    riskyCapabilities: {
       followups:
-        "WhatsApp signs the account out for an unsolicited message — one follow-up cost a linked session on 2026-09-15.",
+        "WhatsApp can sign your account out for this. A follow-up is a message nobody asked for, and one of them cost a linked session on 2026-09-15 — the account was logged out after a single nudge. Replying to people who wrote to you is unaffected.",
     },
     routes: {
       home: () => "https://web.whatsapp.com/",

@@ -256,8 +256,13 @@ body {
    fixed grid left the one survivor stranded at a third of the width with two
    empty columns beside it, which reads as a layout that failed rather than as
    the only budget this platform has. */
-.budgets { display:flex; gap:var(--s2); }
-.budgets > .budget { flex:1 1 0; }
+/* WRAPS, because the number of budgets is not fixed: it is however many passes
+   this platform can run and has switched on, which is one on WhatsApp and five
+   on Instagram. Five across a 400px panel gave each cell ~70px, which truncates
+   "+1 in 42m · 12 today" to nothing useful — so they flow onto a second row
+   instead of being squeezed. `auto-fit` collapses the empty tracks, so two
+   budgets still fill the width rather than huddling on the left. */
+.budgets { display:grid; gap:var(--s2); grid-template-columns:repeat(auto-fit, minmax(96px, 1fr)); }
 .budget { background:var(--card); border:1px solid var(--hair2); border-radius:var(--r-sm);
   padding:10px 10px 9px; min-width:0; }
 .budget .n { font:650 21px/1 var(--body); letter-spacing:-.03em; color:var(--ink);
@@ -381,6 +386,14 @@ a.btn .ico { width:13px; height:13px; flex:0 0 auto; fill:currentColor; }
 .check .lab { display:block; font:550 12.5px/1.25 var(--body); color:var(--ink);
   letter-spacing:-.012em; }
 .check .sub { display:block; margin-top:4px; font:450 10.5px/1.4 var(--body); color:var(--ink3); }
+/* Says "this one can cost you the account", next to the switch that does it.
+   Amber rather than red: red is for a cap already spent, which is a thing that
+   has happened — this is a thing that might. */
+.risk { display:inline-block; margin-left:6px; padding:1.5px 6px; border-radius:var(--r-pill);
+  font:650 9px/1.35 var(--body); letter-spacing:.04em; text-transform:uppercase;
+  color:var(--warnc); background:color-mix(in srgb,var(--warnc) 14%,transparent);
+  border:1px solid color-mix(in srgb,var(--warnc) 30%,transparent); vertical-align:1px; }
+.risk[hidden] { display:none; }
 .check input[type="checkbox"] {
   appearance:none; margin:0; flex:0 0 auto; width:38px; height:22px; border-radius:99px;
   background:var(--field); border:1px solid var(--hair); position:relative; cursor:pointer;

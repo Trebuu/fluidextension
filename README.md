@@ -26,10 +26,18 @@ own. Read this table before you point it at an account you care about.
 | `newThreadsPerHour` | 5 | caps *first* replies into never-answered threads (see below) |
 
 Not every platform has every capability — the set is declared per platform in
-`src/lib/platforms.js`. **Instagram and Threads have all six; Telegram Web has
-DMs and follow-ups; WhatsApp Web has DMs only** — a single unsolicited follow-up
-cost a linked WhatsApp session on 2026-09-15, so it is blocked there with the
-reason recorded in `blockedCapabilities`.
+`src/lib/platforms.js`. **Instagram and Threads have all six; Telegram Web and
+WhatsApp Web have DMs and follow-ups.**
+
+⚠ **Follow-ups on WhatsApp can get the account signed out, and they are off by
+default there for that reason.** A follow-up is a message nobody asked for, and
+one of them cost a linked session on 2026-09-15 — the account was logged out
+after a single nudge. The switch is present, off, badged **Risky** in the panel
+and carries that sentence on its info tip, because a control that is missing
+reads as "this platform cannot do it" rather than "this cost us an account".
+Replying to people who wrote to you is unaffected; that is what `dm` covers, and
+it ran for days without trouble. Defaults that differ for one platform live in
+`PLATFORM_OVERRIDES` in `src/lib/settings.js`.
 
 **Two of these contact people who never contacted us**: `outreachEnabled` (a
 cold DM) and `commentsEnabled` (a public comment on a stranger's post). Turn

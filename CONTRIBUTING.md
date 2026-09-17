@@ -51,11 +51,18 @@ for a string you just wrote — not by trusting that a restart re-read the folde
 
 Each platform lives in `src/content/<platform>.js` and declares its capabilities
 in `src/lib/platforms.js`. Instagram and Threads have all six (`dm`, `followups`,
-`requests`, `comments`, `commentReplies`, `outreach`); Telegram has `dm` and
-`followups`; WhatsApp has `dm` only, because one unsolicited follow-up signed
-the linked session out. `scripts/test-capabilities.mjs` asserts all of this —
-including that nothing is ever both declared and blocked — so changing a
-capability list means changing that test on purpose.
+`requests`, `comments`, `commentReplies`, `outreach`); Telegram and WhatsApp have
+`dm` and `followups`.
+
+A capability that works but can cost the account goes in `riskyCapabilities`
+with a sentence saying what it costs, and a default of off for that platform in
+`PLATFORM_OVERRIDES` (`src/lib/settings.js`). WhatsApp follow-ups are the one
+example: they used to be omitted from `capabilities` instead, which hid the whole
+settings block and the reason with it. Prefer a present control, defaulted off,
+that explains itself — an absent one asserts the platform cannot do the thing,
+which was false. `scripts/test-capabilities.mjs` asserts the capability, the
+override and the warning stay together, so removing any one of them fails the
+build rather than quietly restoring the hazard.
 
 If you are touching a DOM adapter, the rules the existing ones follow:
 
