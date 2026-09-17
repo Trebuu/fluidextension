@@ -183,6 +183,20 @@ export const PLATFORM_DEFAULTS = {
   outreachPerDay: 15,
 
   /**
+   * WHERE the cold-open candidates come from — same vocabulary as
+   * `commentSources`: "followers" (people who follow us), "feed" (the authors
+   * of posts on the home timeline), or "both".
+   *
+   * Defaults to "followers", which is exactly what this did before the setting
+   * existed. That is deliberate: outreach is ON by default, so a default of
+   * "both" would silently start messaging strangers on every platform that
+   * declares the capability, and the two sources are not the same act. A
+   * follower CHOSE us; a feed author has never heard of us and is the colder,
+   * riskier open — worth having, worth opting into.
+   */
+  outreachSources: "followers",
+
+  /**
    * When they send media the web cannot open — a view-once photo, an
    * unsupported attachment — tell the character an event happened instead of
    * skipping the thread.
@@ -346,7 +360,26 @@ function migrate(old) {
    * the choice is at least deterministic rather than whatever the object
    * happened to enumerate first. Everything off means nothing bound.
    */
-  const enabled = PLATFORMS.filter((p) => !disabled.has(p.id)).map((p) => p.id);
+  /**
+   * ⚠ ONLY PLATFORMS THE OLD STORE KNEW ABOUT ARE ELIGIBLE.
+   *
+   * Filtering the CURRENT registry by `disabledPlatforms` looks right and is
+   * not: a platform added after that store was written cannot possibly appear
+   * in the disabled list, so it counts as enabled — and on an install where
+   * everything had been switched off it then becomes the BOUND one. Adding
+   * Threads bound Threads on every such install, silently, and binding is what
+   * decides which account gets worked.
+   *
+   * "Knew about" is the union of the three places the old store names a
+   * platform: the one it was working, the handles it had detected, and the ones
+   * explicitly switched off. A platform in none of them did not exist yet, and
+   * a migration must not make a decision on the user's behalf about software
+   * they have never seen.
+   */
+  const known = new Set(
+    [...disabled, ...Object.keys(handles), old.platform].filter(Boolean),
+  );
+  const enabled = PLATFORMS.filter((p) => known.has(p.id) && !disabled.has(p.id)).map((p) => p.id);
   const bound = enabled.includes(old.platform) ? old.platform : (enabled[0] ?? null);
 
   const platforms = {};

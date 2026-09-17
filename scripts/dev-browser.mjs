@@ -21,10 +21,13 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// The one list of platforms, so a fifth one does not have to be remembered here.
+import { PLATFORMS, routeFor } from "../src/lib/platforms.js";
 
 const EXT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,12 +47,16 @@ const PROFILE = flag("profile", join(tmpdir(), "fluidextension-dev-profile"));
  * worked every platform at once; it is actively wrong now that it works ONE —
  * the tab it lands on decides which platform goes active, so launching always
  * put you on Instagram whatever you were actually there to do.
+ *
+ * Derived from `PLATFORMS` rather than listed here, because a hand-written copy
+ * drifts: this map had no `threads` entry, so `--platform threads` silently fell
+ * back to Instagram's inbox — which then BOUND Instagram, the exact failure the
+ * flag was added to prevent. `inbox` where a platform has one, `home` otherwise
+ * (Telegram has no inbox route on purpose; see platforms.js).
  */
-const PLATFORM_URLS = {
-  instagram: "https://www.instagram.com/direct/inbox/",
-  telegram: "https://web.telegram.org/k/",
-  whatsapp: "https://web.whatsapp.com/",
-};
+const PLATFORM_URLS = Object.fromEntries(
+  PLATFORMS.map((p) => [p.id, routeFor(p, "inbox") ?? routeFor(p, "home")]),
+);
 const PLATFORM = flag("platform", "instagram");
 const START_URL = flag("url", PLATFORM_URLS[PLATFORM] ?? PLATFORM_URLS.instagram);
 /** Dock the side panel next to that tab, rather than leaving it to be clicked. */
@@ -122,6 +129,56 @@ if (!binary) {
 
 mkdirSync(PROFILE, { recursive: true });
 
+/**
+ * Tell the profile never to sleep the platform tabs.
+ *
+ * ⚠ THE LAUNCH FLAGS BELOW DO NOT TURN EDGE'S SLEEPING TABS OFF. Measured over
+ * three hour-long unattended runs on Edge 152: with the whole
+ * `--disable-features=SleepingTabs,msSleepingTabs,TabFreeze,…` list plus
+ * `--disable-renderer-backgrounding` and `--disable-background-timer-throttling`
+ * in place, run 2 still spent its last third asleep — 25 sleep events, cycles
+ * 18 through 24 each `failed: the browser put this tab to sleep mid-call`.
+ *
+ * Sleeping Tabs is a PROFILE SETTING on Edge, not a feature flag, so it is read
+ * from `Preferences` and a command line cannot reach it. The per-site exception
+ * list is what the "never put these sites to sleep" box in Settings writes, and
+ * `setting: 2` (BLOCK) is what "never sleep" means there. With these four
+ * entries written, run 3 slept zero times.
+ *
+ * Written BEFORE launch on purpose: the browser rewrites `Preferences` when it
+ * exits, so an edit made while it is running is discarded. A profile that has
+ * never been launched has no `Preferences` yet — starting from `{}` is correct,
+ * Chromium fills in the rest.
+ */
+function neverSleep(profile) {
+  const file = join(profile, "Default", "Preferences");
+  let prefs = {};
+  try {
+    prefs = JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    // No profile yet, or one we cannot parse. Either way the launch below
+    // recreates it, and a sleeping tab is not worth failing a launch over.
+    if (existsSync(file)) return console.log("sleeping tabs: Preferences unreadable, left alone");
+  }
+  const settings = ((((prefs.profile ??= {}).content_settings ??= {}).exceptions ??= {}).sleeping_tabs ??= {});
+  // Chromium timestamps are microseconds since 1601-01-01.
+  const stamp = String((Date.now() + 11644473600000) * 1000);
+  for (const p of PLATFORMS) {
+    // ⚠ `p.origin` IS NOT ALWAYS AN ORIGIN. Telegram's is
+    // `https://web.telegram.org/k` — the K client's path is part of it, because
+    // `platformForUrl` matches on it. Pasted into a content-setting pattern
+    // that produced `https://web.telegram.org/k:443,*`, which Chromium rejects
+    // as an invalid pattern and drops on load, silently and only for Telegram.
+    const { origin } = new URL(p.origin);
+    settings[`${origin}:443,*`] = { last_modified: stamp, setting: 2 };
+  }
+  mkdirSync(join(profile, "Default"), { recursive: true });
+  writeFileSync(file, JSON.stringify(prefs));
+  console.log(`sleeping tabs: blocked for ${PLATFORMS.length} platform origin(s)`);
+}
+
+neverSleep(PROFILE);
+
 const launchArgs = [
   `--remote-debugging-port=${PORT}`,
   `--user-data-dir=${PROFILE}`,
@@ -145,7 +202,29 @@ const launchArgs = [
   // be on screen) but NOT sufficient; occlusion has to be off as well, or the
   // moment anything covers the browser the run goes quiet again.
   "--disable-backgrounding-occluded-windows",
-  "--disable-features=CalculateNativeWinOcclusion",
+  /**
+   * ⚠ AND SLEEPING TABS, or the tab the sweep drives goes to sleep under it.
+   *
+   * Measured over one unattended hour: from cycle 11 on, every cycle opened
+   * with "the browser has put this tab to sleep", failed a page call on the
+   * full 120-second deadline, repaired the tab, and hit the same wall next
+   * time. The run answered nobody after cycle 7 — the last third of the hour
+   * was timeouts and reloads.
+   *
+   * ONE `--disable-features` FLAG ONLY: a second occurrence REPLACES the first
+   * rather than adding to it, so the occlusion switch has to live in this list
+   * too. The names differ by build (Edge ships it as Sleeping Tabs, Chromium
+   * as tab freezing/high-efficiency), so all of them are named — an unknown
+   * feature name is ignored, an omitted one is not.
+   *
+   * ⚠ AND ON EDGE NONE OF IT WORKS — see `neverSleep()` below, which is what
+   * actually stopped it. The flags stay because they are what Chromium reads.
+   */
+  "--disable-features=CalculateNativeWinOcclusion,SleepingTabs,msSleepingTabs,TabFreeze,HighEfficiencyModeAvailable,IntensiveWakeUpThrottling",
+  // Belt and braces: these stop the renderer being throttled while backgrounded,
+  // which is the same failure one layer down.
+  "--disable-renderer-backgrounding",
+  "--disable-background-timer-throttling",
   START_URL,
 ];
 

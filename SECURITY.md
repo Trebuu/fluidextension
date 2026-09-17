@@ -16,8 +16,8 @@ involved, and whether it needs a valid connector token.
 
 **A connector token, in `chrome.storage.local`.** It is the credential for a
 FluidTalk character and is deliberately kept in the service worker rather than
-the page: a content script shares the DOM with Instagram, Telegram or WhatsApp,
-so anything the token touched there would be reachable by the site.
+the page: a content script shares the DOM with Instagram, Threads, Telegram or
+WhatsApp, so anything the token touched there would be reachable by the site.
 
 Findings that would matter most:
 

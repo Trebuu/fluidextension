@@ -178,6 +178,198 @@ export const PLATFORMS = [
       home: () => "https://web.whatsapp.com/",
     },
   },
+  {
+    /**
+     * Threads.
+     *
+     * ⚠ `threads.net` IS NOT THE ORIGIN ANY MORE. It 301s to `threads.com`,
+     * measured 2026-09-16 — so a manifest match or a `startsWith` on the old
+     * domain would put the adapter on a page that immediately navigates away,
+     * and `platformForUrl` would answer null for every real Threads tab.
+     *
+     * IT HAS ITS OWN DM SURFACE, which is the thing worth checking before
+     * building anything here: Threads shipped without direct messages and sent
+     * people to Instagram for them. It does not any more. `/messages/` is a
+     * first-party inbox on threads.com, no iframe, with its own Requests and
+     * Hidden folders.
+     *
+     * The sign-in is Instagram's, so a browser already signed in to Instagram
+     * is usually signed in here too — which also means a ban here is a ban on
+     * the same identity Instagram uses. Treat it with Instagram's caution, not
+     * Telegram's.
+     */
+    id: "threads",
+    label: "Threads",
+    origin: "https://www.threads.com",
+
+    /**
+     * ⚠ THIS CLIENT NEVER RE-RENDERS WHAT IS ALREADY ON SCREEN.
+     *
+     * Measured on the wire 2026-09-16: an inbound message arrives perfectly —
+     * 7 large frames over `wss://gateway.threads.com/ws/lightspeed` while the
+     * conversation was open and visible — and Threads draws NONE of it. The
+     * bubble count stayed at 4 for four minutes. Scrolling the pane, and
+     * blur/focus/visibilitychange, changed nothing. Nor is it only the open
+     * thread: a list left sitting on `/messages/` kept showing `a_lead Hey`
+     * while a fresh render of the same URL read `a_lead What's time is it?`.
+     *
+     * So a MutationObserver cannot see an incoming Threads message — there is
+     * no mutation — and `goTo`'s "already on that URL, not reloading it" skip
+     * turns a cycle into re-reading one stale snapshot for ever. That skip
+     * exists for a real reason (Instagram's re-bootstrap earned 12,942
+     * rate-limited requests), so it stays everywhere else and is turned off
+     * here, where a navigation is the only thing that refreshes anything.
+     */
+    rerenderOnRevisit: true,
+
+    /**
+     * `dm` only. Everything else is IMPLEMENTED AND GATED, which is not the
+     * same as missing — see `blockedCapabilities` for why each one is off.
+     *
+     * `requests` was declared for a while on the strength of `acceptRequest`
+     * having been run for real against a pending request. It was taken back
+     * after the WHOLE flow was traced instead of just that step: the worker
+     * does list -> open -> accept, and clicking a request row from
+     * /messages/requests navigates to `/<8 chars>/messages`, a page with no
+     * composer, no accept control and no thread id. The accept works; there is
+     * no way to get standing in front of one.
+     *
+     * `outreach` WAS off by choice and is now declared, at the owner's request
+     * (2026-09-16). The thing that made it worthless on Instagram — profiles
+     * offering no way to message us, failing 100% and earning a sustained 429 —
+     * does not happen here. Dry-run probed against four real profiles, two of
+     * them strangers taken from the home feed: every one offered exactly one
+     * message control ("Wyślij wiadomość"). Both candidate sources read too:
+     * the feed gave 8 posts / 8 distinct authors with sponsored already
+     * filtered, and the followers dialog gave 9 handles.
+     *
+     * ⚠ It is still the only thing here that writes to somebody who never
+     * wrote to us, on an identity that is Instagram's — a ban here is a ban
+     * there. It stays behind `outreachEnabled`, its own hourly/daily budget,
+     * and the consecutive-failure breaker.
+     */
+    capabilities: ["dm", "followups", "requests", "comments", "commentReplies", "outreach"],
+
+    /**
+     * Implemented, verified as far as it could be verified, and NOT declared.
+     *
+     * The adapter answers every one of these (`ft:read-feed`, `ft:read-post`,
+     * `ft:read-comments`, `ft:post-comment`, `ft:post-comment-reply`,
+     * `ft:list-followers`, `ft:open-dm`, …) and the read paths are all
+     * verified against the live site. What is missing in each case is a
+     * publish or an outbound message that has actually landed, and every one
+     * of those is an action against somebody else.
+     */
+    /*
+     * The long version, kept here rather than in the strings — these render as
+     * a note in the side panel, where the standing instruction is one short
+     * sentence:
+     *
+     *   requests        /messages/requests lists correctly and ft:list-threads
+     *                   returns the pending row. acceptRequest itself works —
+     *                   it has been run for real. What does not work is GETTING
+     *                   THERE: clicking the row navigates to `/<8 chars>/
+     *                   messages`, which renders no composer, no Accept, no
+     *                   Block and no thread id, and stays that way. Until a
+     *                   request can be opened, declaring this would list the
+     *                   folder and accept nothing.
+     *   comments        Publishing is proven: a top-level comment was posted
+     *                   and confirmed on OUR OWN post (ft:post-comment ->
+     *                   {ok:true, id}). What has never been done is publish on
+     *                   a STRANGER's post, which is what the capability does.
+     *                   Same mechanism, different blast radius.
+     *   commentReplies  A threaded reply publishes but is not CONFIRMED: it
+     *                   does not come back from readComments on the post it was
+     *                   written from, so the adapter reports
+     *                   not_visible_after_publishing and the worker would post
+     *                   it a second time. Find where Threads renders a
+     *                   reply-to-a-reply first.
+     *   followups       An unsolicited outbound message, and one of those cost
+     *                   a linked WhatsApp session on 2026-09-15. Threads is the
+     *                   same company and — because the sign-in is Instagram's —
+     *                   the same identity. ft:open-dm is built and dry-run
+     *                   verified; nothing has been sent.
+     *   outreach        The same, more so: it messages people who never wrote.
+     *                   The followers list it would draw from reads correctly
+     *                   (8 handles out of the profile dialog).
+     */
+    /**
+     * NOTHING IS BLOCKED ANY MORE — parity with Instagram, at the owner's
+     * request (2026-09-16). Each of the four reasons that used to live here was
+     * retired by doing the thing it described, not by deciding it was fine:
+     *
+     *   requests        "a request row does not open into anything" — it does,
+     *                   if you NAVIGATE instead of clicking. A requests row is
+     *                   a real anchor to `/messages/t/<id>/`; going there gives
+     *                   a thread id, `is_request`, and Accept sitting next to
+     *                   Block and Delete. Verified on a live pending request.
+     *   comments        Published on two strangers' posts and confirmed on a
+     *                   fresh render.
+     *   commentReplies  "cannot be confirmed on the page" — because Threads
+     *                   NEVER renders a reply-to-a-reply on the parent post at
+     *                   all; it lives on `/@us/replies`. Confirmation now comes
+     *                   from the composer clearing itself, and a real reply was
+     *                   published and answered exactly once (a re-run reported
+     *                   "0 unanswered").
+     *   followups       Was off by choice while outreach was too. Outreach is
+     *                   declared now, and a follow-up only reaches somebody
+     *                   already in a conversation — strictly less exposure than
+     *                   the cold open beside it. One was delivered.
+     *
+     * ⚠ The caution that motivated those entries has NOT gone away: the sign-in
+     * is Instagram's, so a ban here is a ban there. What changed is that each
+     * path is now exercised end to end rather than assumed.
+     */
+    blockedCapabilities: {},
+
+    routes: {
+      home: () => "https://www.threads.com/",
+      inbox: () => "https://www.threads.com/messages/",
+      requests: () => "https://www.threads.com/messages/requests",
+      notifications: () => "https://www.threads.com/activity",
+      profile: (handle) => `https://www.threads.com/@${String(handle).replace(/^@/, "")}`,
+      /**
+       * A post is `/@author/post/<code>`, so the code alone cannot address one
+       * — the author is part of the path. Callers that hold only a code have
+       * nothing to navigate to, which is why this takes both.
+       *
+       * ⚠ THIS ADDRESS DOES NOT SURVIVE A COLD LOAD. Navigating to it answers
+       * **302** to `/?…=["<id>"]`, and the app then rewrites history to `/` —
+       * measured on the wire, twice, on fresh targets. So a worker that
+       * "navigates to a post" lands on the HOME FEED and reads whatever is at
+       * the top of it, which is somebody else's post entirely.
+       *
+       * A post opens by CLICKING its link from a list (feed, profile,
+       * /activity): that is an in-app navigation, the address then becomes this
+       * one, and the reply composer mounts. `ft:open-post` does exactly that.
+       * This route is kept because it is the right address to RECOGNISE and to
+       * show a human — it is not a route to navigate to.
+       *
+       * It returns NULL when called the way the worker calls it — `goToRoute
+       * ("post", [code])` passes one argument, so `code` is undefined here. A
+       * null route makes goToRoute log "Threads has no post page — skipped" and
+       * stop, which is the honest outcome: building a URL out of the code alone
+       * would navigate somewhere that redirects to the feed and then read a
+       * stranger's post as though it were the one asked for.
+       */
+      post: (handle, code) =>
+        code ? `https://www.threads.com/@${String(handle).replace(/^@/, "")}/post/${code}` : null,
+      /**
+       * A THREAD IS ADDRESSABLE: `/messages/t/<id>/`, and navigating straight
+       * to one opens it with no click on the list at all. Verified by loading
+       * the URL in a fresh tab — the address holds and the conversation
+       * renders. That puts Threads with Instagram rather than WhatsApp, and it
+       * is the difference between a thread the worker can OPEN and one it can
+       * only hope it clicked.
+       *
+       * ⚠ An earlier reading of this was WRONG and said so in a commit: the
+       * first probe clicked the list HEADER rather than a conversation row, saw
+       * the URL stay on `/messages/`, and concluded there was no route. The
+       * rows are the elements whose clickable ancestor is a `role=link`.
+       */
+      thread: (id) => `https://www.threads.com/messages/t/${id}/`,
+    },
+  },
 ];
 
 /** The platform a URL belongs to, or null. */

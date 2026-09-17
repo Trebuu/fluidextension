@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FluidExtension",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Reply to Instagram DMs with a FluidTalk character, from a side panel.",
   "minimum_chrome_version": "114",
   "icons": {
@@ -15,6 +15,7 @@
     "https://www.instagram.com/*",
     "https://web.telegram.org/*",
     "https://web.whatsapp.com/*",
+    "https://www.threads.com/*",
     "https://*.fluidvip.com/*",
     "https://*.cdninstagram.com/*",
     "https://*.fbcdn.net/*"
@@ -68,6 +69,17 @@
       "js": ["src/content/whatsapp-mainworld.js"],
       "world": "MAIN",
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.threads.com/*"],
+      "js": ["src/content/media.js", "src/content/threads.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.threads.com/*"],
+      "js": ["src/content/threads-mainworld.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ]
 }

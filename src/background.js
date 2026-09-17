@@ -642,11 +642,30 @@ async function targetFor(platformId) {
   //
   // Only probed when there IS a choice, so the ordinary one-tab-per-platform
   // case costs nothing.
-  for (const tab of tabs) {
+  //
+  // ⚠ EXCEPT A SUSPENDED TAB, WHICH CANNOT ANSWER — SO PROBING IT COSTS THE
+  // WHOLE DEADLINE. Edge's Sleeping Tabs (and Chrome's own freezing) park an
+  // idle background tab with `frozen: true`: it keeps its title and its url,
+  // reports `status: "complete"`, is NOT `discarded`, and its page renders
+  // perfectly over CDP — the only thing that changes is that its content
+  // script no longer runs, so `chrome.tabs.sendMessage` never settles. That is
+  // indistinguishable from an orphaned script BY PROBING, which is exactly why
+  // it was expensive: measured with a duplicate Threads tab asleep, it sorted
+  // first by id and every resolution paid READY_PROBE_MS before falling
+  // through to a working tab — 10s per call, 30s for one `ft:get-state`, and
+  // the panel does several of those per refresh. Reloading it does not help
+  // either; it simply goes back to sleep.
+  //
+  // The flag is READABLE, so ask rather than wait. Frozen and discarded tabs
+  // drop to the back rather than out: if they are all we have, the old
+  // behaviour still applies and the heal path gets its chance at them.
+  const awake = tabs.filter((t) => !t.frozen && !t.discarded);
+  const candidates = awake.length ? awake : tabs;
+  for (const tab of candidates) {
     const probe = await probeReady({ tab, platform });
     if (probe.alive && probe.ready) return { tab, platform };
   }
-  return { tab: tabs[0], platform };
+  return { tab: candidates[0], platform };
 }
 
 /**
@@ -709,6 +728,40 @@ async function stopWatch(done) {
 }
 
 /**
+ * ⚠ A TAB CAN FALL ASLEEP MID-CALL, AND THEN THE CALL COSTS THE FULL DEADLINE.
+ *
+ * `probeReady` already reads `frozen` before a run touches a tab, which is
+ * cheap and correct — and useless here, because Edge freezes a backgrounded tab
+ * WHILE the cycle is working it. What happens then is the worst version:
+ * `chrome.tabs.sendMessage` to a frozen tab never settles, so the call waits
+ * out `PAGE_CALL_TIMEOUT_MS` before anything notices.
+ *
+ * Measured over one unattended hour: cycles 11 through 16 each opened with
+ * `the browser has put this tab to sleep`, then failed on a 120-second
+ * `ft:list-threads`, repaired, and hit the same wall next cycle. The run's
+ * `sent` count did not move after cycle 7 — the last third of the hour was
+ * nothing but timeouts and reloads.
+ *
+ * `frozen` is READABLE, so this polls it instead of waiting. Two seconds of
+ * latency instead of a hundred and twenty, and the heal path — which already
+ * knows how to cure a sleeping tab — gets to run while the cycle still has
+ * time to do something useful.
+ */
+async function sleepWatch(tabId, done) {
+  while (!done.over) {
+    await sleep(2000);
+    if (done.over) return await new Promise(() => {});
+    const asleep = await chrome.tabs.get(tabId).then(
+      (t) => Boolean(t.frozen || t.discarded),
+      // Gone entirely: let the other racers report it in their own words.
+      () => false,
+    );
+    if (asleep) throw new Error("the browser put this tab to sleep mid-call");
+  }
+  return await new Promise(() => {});
+}
+
+/**
  * A page mid-navigation has no content script FOR A MOMENT.
  *
  * The sweep navigates all the time — inbox, requests, a post, a thread — and
@@ -753,6 +806,8 @@ async function askPageOnce(type, extra = {}, target = null) {
       // has wedged mid-call holds the whole run up for the full two minutes —
       // per call. Observed: Stop pressed, loops still "busy" minutes later.
       stopWatch(done),
+      // A tab that falls asleep mid-call never answers — see `sleepWatch`.
+      sleepWatch(tab.id, done),
     ]);
   } catch (err) {
     // A timeout is OUR message and must survive: the catch below rewrites
@@ -760,7 +815,9 @@ async function askPageOnce(type, extra = {}, target = null) {
     // wedged handler into a reload-the-tab suggestion that fixes nothing.
     // Same for a stop: rewritten, it would read as a dead content script and
     // send ensureAlive off to reload a perfectly healthy tab on every stop.
-    if (/did not answer|^stopped$/.test(err?.message ?? "")) throw err;
+    // A sleeping tab likewise: the heal path cures that one, and calling it an
+    // orphaned script would send it to the wrong repair.
+    if (/did not answer|^stopped$|put this tab to sleep/.test(err?.message ?? "")) throw err;
     // The content script is absent on a tab that was open before the extension
     // loaded — a reload injects it. Saying so beats "could not establish
     // connection", which reads like a network fault.
@@ -1321,7 +1378,15 @@ async function sendBubbles(thread, bubbles, target = null) {
       : await askPage("ft:send-bubble", { text: bubble.text, expectThreadId: thread.threadId }, target);
     sent.push({ text: bubble.text, ...result });
     if (!result.ok) {
-      await log("error", `${thread.handle}: bubble ${i + 1} did not appear in the thread`, result);
+      /**
+       * SAY WHY. The adapter's reason names what it pressed, whether the box
+       * still holds the text and how many bubbles were on screen — and this
+       * line dropped all of it into the second argument, where the panel log
+       * does not show it. "Did not appear in the thread" on its own cannot
+       * distinguish a send that was accepted and never rendered from a click
+       * that hit nothing, which is two days of guessing.
+       */
+      await log("error", `${thread.handle}: bubble ${i + 1} not confirmed — ${result.reason ?? "no reason given"}`, result);
       break;
     }
   }
@@ -1531,14 +1596,33 @@ function notePendingWork(platformId, ids) {
   pendingWork.set(platformId, set);
 }
 
+/**
+ * Platforms told "something happened" WITHOUT being told what.
+ *
+ * `pendingWork` holds rows, because a page watcher knows which conversations
+ * changed and a woken cycle can then work exactly those. Threads' doorbell
+ * cannot: it hears a frame on a socket, and deliberately does not read it. So
+ * it wakes the gap and the cycle does its ordinary full pass — late by one
+ * navigation instead of by one idle gap.
+ */
+const wokenPlatforms = new Set();
+
+function noteWake(platformId) {
+  if (platformId) wokenPlatforms.add(platformId);
+}
+
 function hasPendingWork(platformId) {
-  return Boolean(platformId && pendingWork.get(platformId)?.size);
+  return Boolean(platformId && (pendingWork.get(platformId)?.size || wokenPlatforms.has(platformId)));
 }
 
 /** Claim the pending rows, clearing them: a woken cycle consumes its reason. */
 function takePendingWork(platformId) {
   const set = pendingWork.get(platformId);
   pendingWork.delete(platformId);
+  // The wake is consumed with them: a cycle that has started IS the answer to
+  // the doorbell, and leaving the flag up would cut every later gap short for
+  // the rest of the run.
+  wokenPlatforms.delete(platformId);
   return set ?? new Set();
 }
 
@@ -1605,17 +1689,28 @@ async function setSweep(patch, platformId = null) {
 const FOLLOWUP_LOG = "fluidextension.followups";
 
 /** How many follow-ups each handle has had, and when the last one went. */
-async function followupHistory() {
-  const { [FOLLOWUP_LOG]: log = {} } = await chrome.storage.local.get(FOLLOWUP_LOG);
+/**
+ * ⚠ PER PLATFORM, because a rung spent on one site is not spent on another.
+ *
+ * Shared, this silences a platform before it has said anything: read live,
+ * `another.lead` carried `count: 3` from Instagram, so on Threads — where the
+ * character had just opened its FIRST conversation with them — every stage
+ * already looked used and no nudge could ever be due. The ladder is per
+ * conversation, and FluidTalk keys a session per platform for the same reason.
+ */
+async function followupHistory(platformId = null) {
+  const key = outreachKey(FOLLOWUP_LOG, platformId);
+  const { [key]: log = {} } = await chrome.storage.local.get(key);
   return log;
 }
 
-async function recordFollowup(handle) {
-  const log = await followupHistory();
+async function recordFollowup(handle, platformId = null) {
+  const key = outreachKey(FOLLOWUP_LOG, platformId);
+  const log = await followupHistory(platformId);
   const row = log[handle] ?? { count: 0, last: 0 };
   // `failures` is deliberately dropped: a confirmed send clears the doubt.
   log[handle] = { count: row.count + 1, last: Date.now() };
-  await chrome.storage.local.set({ [FOLLOWUP_LOG]: log });
+  await chrome.storage.local.set({ [key]: log });
 }
 
 /**
@@ -1627,12 +1722,13 @@ async function recordFollowup(handle) {
  * reads correctly and never trips, which is exactly the shape of guard that
  * let sixteen copies of one message go out.
  */
-async function recordFollowupFailure(handle) {
-  const log = await followupHistory();
+async function recordFollowupFailure(handle, platformId = null) {
+  const key = outreachKey(FOLLOWUP_LOG, platformId);
+  const log = await followupHistory(platformId);
   const row = log[handle] ?? { count: 0, last: 0 };
   const failures = (row.failures ?? 0) + 1;
   log[handle] = { ...row, failures };
-  await chrome.storage.local.set({ [FOLLOWUP_LOG]: log });
+  await chrome.storage.local.set({ [key]: log });
   return failures;
 }
 
@@ -1723,7 +1819,7 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
    * and a billed generate, and the send can only ever fail — which the retry
    * cap then counts as three strikes against a handle that did nothing wrong.
    */
-  const unreachableNow = await unreachableProfiles();
+  const unreachableNow = await unreachableProfiles(target?.platform.id);
   const blocked = queued.filter((fu) => unreachableNow.has(String(fu.handle ?? fu.lead_handle ?? "")));
   if (blocked.length) {
     queued = queued.filter((fu) => !unreachableNow.has(String(fu.handle ?? fu.lead_handle ?? "")));
@@ -1739,9 +1835,9 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
   /** Handles the queue holds that this browser has no conversation for. */
   const unknownHere = [];
 
-  const history = await followupHistory();
+  const history = await followupHistory(target?.platform.id);
   const rows = await askPage("ft:list-threads", { ownHandle: settings.ownUsername }, target);
-  const known = await knownThreads();
+  const known = await knownThreads(target?.platform.id);
 
   for (const fu of queued) {
     if (await stopRequested()) return;
@@ -1755,11 +1851,26 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
     // their Instagram display name; for everybody else the row says one thing
     // and the queue says another.
     const seen = known[handle.toLowerCase()];
-    const row = rows.find((r) => r.name && r.label.toLowerCase().includes(handle.toLowerCase()));
+    /**
+     * ⚠ THE ROW'S TEXT IS NOT IN THE SAME FIELD ON EVERY PLATFORM. Instagram
+     * answers `{label: "<the whole row>", name}`; Threads answers
+     * `{label: "<the index>", title: "<the whole row>"}` and NO `name` at all —
+     * its rows carry no id until opened, so the label has to be something
+     * `ft:open-thread` can use. Requiring `r.name` therefore matched nothing on
+     * Threads, ever: the id path was the only way through, and a lead this
+     * browser had not read before was collected as "unknown here" instead.
+     *
+     * `rowText` is what a reader sees, wherever it lives; `row.label` stays
+     * what gets handed back to `ft:open-thread`, which is per-platform by
+     * design.
+     */
+    const row = rows.find((r) => rowText(r).toLowerCase().includes(handle.toLowerCase()));
     // Silence is read off the row when we have one. With only a thread id there
     // is no age to read, which `followupDue` treats as "trust the queue" — and
     // the queue is only ever filled with leads FluidTalk already judged dormant.
-    const ageDays = row ? ageDaysFromLabel(row.label) : null;
+    // The "· 1 tydz." stamp lives in the row's TEXT, which on Threads is not
+    // `label` — reading it from there asked an index how old it was.
+    const ageDays = row ? ageDaysFromLabel(rowText(row)) : null;
     const silentHours = ageDays === null ? null : ageDays * 24;
 
     const due = followupDue(stages, history, handle, silentHours);
@@ -1821,7 +1932,7 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
     // not opened Instagram yet.
     const state = await readThread(settings.ownUsername, target);
     if (state?.canSend === false) {
-      await markUnreachable(handle);
+      await markUnreachable(handle, target?.platform.id);
       await log("info", `follow-up ${handle}: skipped — they never accepted the request, so nothing can be sent`);
       await goToRoute("inbox", [], 7000, target);
       continue;
@@ -1845,7 +1956,7 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
     );
     if (sent.some((s) => s.ok)) {
       sentCount += 1;
-      await recordFollowup(handle);
+      await recordFollowup(handle, target?.platform.id);
       history[handle] = { count: (history[handle]?.count ?? 0) + 1, last: Date.now() };
       await log(
         "info",
@@ -1877,9 +1988,9 @@ async function runFollowups(settings, { onlyHandle = null, dryRun = false, targe
       // The reader is fixed, but a person receiving sixteen copies of one
       // sentence must not depend on a DOM heuristic being right. Three
       // unconfirmed attempts and this handle is left alone.
-      const fails = await recordFollowupFailure(handle);
+      const fails = await recordFollowupFailure(handle, target?.platform.id);
       if (fails >= MAX_UNCONFIRMED) {
-        await recordFollowup(handle);
+        await recordFollowup(handle, target?.platform.id);
         await log(
           "error",
           `follow-up ${handle}: ${fails} attempts never confirmed in the thread — giving up on this one. ` +
@@ -1914,6 +2025,67 @@ const COMMENTED_KEY = "fluidextension.commented";
  * commented on these, so there is nothing to come back for.
  */
 const UNCOMMENTABLE_KEY = "fluidextension.uncommentable";
+
+/**
+ * What we actually said on each post — the only way to recognise a reply to it
+ * on Threads.
+ *
+ * ⚠ A THREADS NOTIFICATION ABOUT A REPLY TO OUR COMMENT CARRIES NO POST LINK.
+ * Measured on the live /activity list: a row about somebody replying to our
+ * comment on THEIR post holds exactly one anchor, `/@a_lead` — the actor's
+ * profile — with no `role`, no wrapping link, and no post href anywhere; only
+ * rows about OUR OWN posts carry `/@us/post/<code>`. So `readNotifications`
+ * answers `code: null` for precisely the case `commentReplies` exists to
+ * handle, and the pass opened the one older post that did have a code, found
+ * no replies under our comments there, and reported zero.
+ *
+ * What the row DOES carry is the text of the comment that was replied to —
+ * ours. We wrote it, so we can recognise it: recorded here at the moment it is
+ * published, and matched back in `replyCandidatePosts`. That costs no page
+ * load, where clicking each notification to discover where it leads costs one
+ * apiece.
+ *
+ * Per platform, like every other ledger keyed by something a platform owns.
+ */
+const COMMENT_TEXTS_KEY = "fluidextension.commentTexts";
+/** Enough to identify one comment, short enough to survive a truncated row. */
+const COMMENT_TEXT_KEEP = 60;
+
+async function commentTexts(platformId = null) {
+  const key = outreachKey(COMMENT_TEXTS_KEY, platformId);
+  const { [key]: map = {} } = await chrome.storage.local.get(key);
+  return map;
+}
+
+/** The stored shape, tolerating the first version which was a bare string. */
+function commentMemo(value) {
+  if (!value) return null;
+  return typeof value === "string" ? { text: value, author: null } : { text: value.text, author: value.author ?? null };
+}
+
+/**
+ * `author` is what makes the post OPENABLE again.
+ *
+ * A Threads post opens only by clicking a link to it, and the notification the
+ * reply arrives on has none — so falling back to /activity, which is what
+ * `openPostByCode` does by default, looks for a link on the one page that
+ * certainly lacks it: "no link to post C7aBcDeFgHi on this page". The author's
+ * profile is a list that does have it, and we know who they are at the moment
+ * we comment.
+ */
+async function rememberCommentText(code, text, author, platformId = null) {
+  if (!code || !text) return;
+  const key = outreachKey(COMMENT_TEXTS_KEY, platformId);
+  const map = await commentTexts(platformId);
+  map[code] = {
+    text: String(text).replace(/\s+/g, " ").trim().slice(0, COMMENT_TEXT_KEEP),
+    author: author ?? null,
+  };
+  // Bounded, like the other ledgers: only the recent tail can still get a reply.
+  const codes = Object.keys(map);
+  if (codes.length > 500) for (const c of codes.slice(0, codes.length - 500)) delete map[c];
+  await chrome.storage.local.set({ [key]: map });
+}
 
 async function uncommentablePosts() {
   const { [UNCOMMENTABLE_KEY]: list = [] } = await chrome.storage.local.get(UNCOMMENTABLE_KEY);
@@ -2039,7 +2211,44 @@ async function runComments(settings, { limit = Infinity, dryRun = false, target 
       return summary();
     }
 
-    if (!(await goTo(cand.url, 9000, target))) return summary();
+    /**
+     * ⚠ A POST IS NOT ALWAYS ADDRESSABLE, so it is opened BY CODE.
+     *
+     * This navigated to `cand.url`, which only exists because Instagram's feed
+     * reader puts one there. Threads' does not — and Threads' post route
+     * deliberately returns null, because `/@author/post/<code>` answers 302 and
+     * lands on the HOME FEED. So this called `goTo(undefined)` and then read
+     * whatever was on screen: the whole comments pass could never work there,
+     * and the failure surfaced as "could not read <code>", which reads like a
+     * slow page rather than a pass that never had a way in.
+     *
+     * `openPostByCode` already knows both routes — address it where one exists,
+     * click the link where one does not — and `backTo` tells its retry which
+     * list the code came from.
+     */
+    const backTo =
+      cand.via === "follower" && cand.author
+        ? { route: "profile", args: [cand.author] }
+        : { route: "home", args: [] };
+    /**
+     * A candidate we cannot open is SKIPPED, not the end of the run.
+     *
+     * This returned, which is defensible where opening is a navigation: a
+     * `goTo` that fails means something systemic. On Threads a post is opened
+     * by clicking its link, the home feed is live, and candidates are all
+     * gathered BEFORE any of them is opened — so by the time the pass reaches
+     * one, the timeline may simply have moved on. Reproduced: a post that was
+     * sixth of thirty-four answered `no link to post DdAaBbCcDdE on this page`
+     * minutes later, after `openPostByCode` had already gone back to the feed
+     * and rescanned it.
+     *
+     * One stale candidate therefore ended a pass holding twelve good ones, and
+     * the run reported the posts it never looked at as though it had finished.
+     */
+    if (!(await openPostByCode(cand.code, 9000, target, { backTo }))) {
+      await log("info", `comments: could not open ${cand.code} (${cand.via}) — skipping it`);
+      continue;
+    }
     const post = await askPage("ft:read-post", { ownHandle: settings.ownUsername }, target);
     if (!post.ok) {
       await log("error", `comments: could not read ${cand.code} (${post.reason})`);
@@ -2075,7 +2284,11 @@ async function runComments(settings, { limit = Infinity, dryRun = false, target 
       await markCommented(cand.code);
       continue;
     }
-    if (post.imageUrls.length && data.vision && !data.vision.seen) {
+    // Optional, because an adapter that reports no images at all is a normal
+    // platform rather than a broken one — this threw "Cannot read properties
+    // of undefined (reading 'length')" and took the WHOLE comments pass down
+    // AFTER the character had already written the comment.
+    if (post.imageUrls?.length && data.vision && !data.vision.seen) {
       await log("error", `comments ${cand.code}: written WITHOUT seeing the picture (${data.vision.reason ?? "?"})`);
     }
 
@@ -2089,11 +2302,31 @@ async function runComments(settings, { limit = Infinity, dryRun = false, target 
     }
 
     if (!(await abortableSleep(2000 + Math.random() * 4000))) return summary();
-    const posted = await askPage("ft:post-comment", { text: data.comment }, target);
+    /**
+     * `ownHandle` is what makes the confirmation mean anything.
+     *
+     * The adapter confirms a publish by finding a block on the post that
+     * CONTAINS our text — `includes`, because Threads appends its own furniture
+     * inside the block. Without a handle to check it against, that match is
+     * "somebody said something containing this", and a character's comment is
+     * often a short generic line that really can sit inside a longer comment by
+     * someone else. Then a publish that never happened is counted, recorded in
+     * `commented`, and never retried. The reply path has always sent it; this
+     * one did not, on either call site.
+     */
+    const posted = await askPage(
+      "ft:post-comment",
+      { text: data.comment, ownHandle: settings.ownUsername },
+      target,
+    );
     if (posted.ok) {
       postedCount += 1;
       await recordCounter("comment", target?.platform.id);
       await markCommented(cand.code);
+      // What we said, so a reply to it can be recognised later — see
+      // `COMMENT_TEXTS_KEY`. Recorded here because this is the only moment both
+      // the post code and the published words are in hand.
+      await rememberCommentText(cand.code, data.comment, post.author ?? cand.author, target?.platform.id);
       done.add(cand.code);
       await log("info", `commented on ${cand.author ?? cand.code} (${cand.via}): “${data.comment.slice(0, 60)}”`);
     } else {
@@ -2104,7 +2337,13 @@ async function runComments(settings, { limit = Infinity, dryRun = false, target 
       // so neither is spent on it twice. Kept apart from `commentedPosts`,
       // which doubles as the fallback list of posts to check for replies: we
       // never commented here, so there is nothing to come back for.
-      if (/no comment box/i.test(posted.reason ?? "")) await markUncommentable(cand.code);
+      // The FLAG first, the sentence second. Matching `/no comment box/i` alone
+      // is matching Instagram's exact wording, so Threads — which says "no
+      // reply composer" — never memoed anything, and every cycle re-opened the
+      // post and paid for another generation before failing the same way.
+      if (posted.uncommentable || /no comment box/i.test(posted.reason ?? "")) {
+        await markUncommentable(cand.code);
+      }
     }
   }
 
@@ -2148,7 +2387,32 @@ async function replyCandidatePosts(settings, target = null) {
     // A reply names us with an @mention, so those rows come first; the rest are
     // likes and follows on posts we commented on, which is still a better place
     // to look than a post nobody has touched.
-    const replies = notes.rows.filter((r) => r.repliedToUs);
+    /**
+     * `repliedToUs` means "the post is OURS", which is the wrong question here.
+     * A reply to our comment on somebody ELSE's post is the whole point of this
+     * pass, and on Threads such a row carries no post link at all — see
+     * `COMMENT_TEXTS_KEY`. It does quote the comment that was replied to, and
+     * that comment is one we wrote, so the code comes back by recognising our
+     * own words rather than by clicking every notification to find out where it
+     * goes.
+     */
+    const ours = await commentTexts(target?.platform.id);
+    const recovered = [];
+    for (const r of notes.rows) {
+      if (r.code || !r.text) continue;
+      const hit = Object.entries(ours).find(([, v]) => commentMemo(v)?.text && r.text.includes(commentMemo(v).text));
+      if (!hit) continue;
+      recovered.push({
+        ...r,
+        code: hit[0],
+        // Where to open it FROM — see `rememberCommentText`. The notification
+        // itself has no link to the post.
+        postAuthor: commentMemo(hit[1])?.author ?? r.postAuthor ?? null,
+        repliedToUs: true,
+        via: "quoted our comment",
+      });
+    }
+    const replies = [...notes.rows.filter((r) => r.repliedToUs), ...recovered];
 
     // ⚠ ONLY POSTS WITH A NOTIFICATION WE HAVE NOT SEEN BEFORE.
     //
@@ -2167,13 +2431,17 @@ async function replyCandidatePosts(settings, target = null) {
     const seen = await seenNotifications();
     const fresh = replies.filter((r) => !seen.has(noteKey(r)));
     const codes = [...new Set(fresh.map((r) => r.code))];
+    // Which profile each post can be reached FROM, when the notification has no
+    // link to it — see `rememberCommentText`.
+    const authors = Object.fromEntries(fresh.filter((r) => r.postAuthor).map((r) => [r.code, r.postAuthor]));
     const quiet = replies.length - fresh.length;
     await log(
       "info",
       `comment replies: ${notes.rows.length} notification(s), ${replies.length} naming us` +
+        `${recovered.length ? ` (${recovered.length} matched by our own comment's text — the row carried no post link)` : ""}` +
         `${quiet ? `, ${quiet} already seen` : ""} — ${codes.length} post(s) to open`,
     );
-    return { via: "notifications", codes, rows: fresh };
+    return { via: "notifications", codes, rows: fresh, authors };
   }
 
   await log("error", `comment replies: could not read notifications (${notes.reason ?? "unreadable"}) — falling back to the posts we commented on`);
@@ -2235,9 +2503,51 @@ async function markAnswered(id) {
  * top-level remark rather than an answer is a thing a human has to go and
  * delete.
  */
+/**
+ * Open one post by its code.
+ *
+ * Instagram ADDRESSES a post: `/p/<code>/` loads, so navigating is right there.
+ * Threads does not — its post address answers 302 and lands on the home feed,
+ * measured on the wire — so a worker that navigated would read whoever is at
+ * the top of the feed as though it were the post it asked for.
+ *
+ * `routeFor` returning null is how a platform says "you cannot navigate to one
+ * of these"; the adapter is then asked to open it the way a person does, by
+ * clicking a link already on the page. That is why this has to be called while
+ * still ON the page the code came from — the notifications list.
+ */
+async function openPostByCode(code, waitMs = 9000, target = null, { backTo = null } = {}) {
+  const here = target ?? (await boundTarget());
+  const url = routeFor(here?.platform, "post", code);
+  if (url) return goTo(url, waitMs, target);
+
+  const opened = await askPage("ft:open-post", { code }, target);
+  if (opened?.ok) return true;
+
+  // A CLICK NEEDS THE LINK TO BE ON SCREEN, and opening the previous post
+  // navigated away from the list the codes came from. Every code after the
+  // first would otherwise fail with "no link to post <code> on this page" —
+  // which reads like the post vanished rather than like we moved.
+  //
+  // WHICH list to go back to depends on where the code came from: a post found
+  // on the home feed is not linked from /activity, so the default would send a
+  // feed candidate somewhere its link has never been. The caller knows; it says
+  // so with `backTo`.
+  const back = backTo ?? { route: "notifications", args: [] };
+  if (!(await goToRoute(back.route, back.args ?? [], 10000, target))) return false;
+  const retried = await askPage("ft:open-post", { code }, target);
+  if (retried?.ok) return true;
+
+  await log(
+    "info",
+    `${here?.platform?.label ?? "the page"} could not open post ${code}: ${retried?.reason ?? opened?.reason ?? "no way to open a post"}`,
+  );
+  return false;
+}
+
 async function confirmThreaded(code, sent, reply, target = null) {
   if (!sent.needsReloadCheck) return null;
-  if (!(await goToRoute("post", [code], 9000, target))) return null;
+  if (!(await openPostByCode(code, 9000, target))) return null;
 
   const again = await askPage("ft:read-comment-replies", { ownHandle: (await currentSettings(target)).ownUsername }, target);
   if (!again.ok) {
@@ -2283,7 +2593,7 @@ async function runCommentReplies(settings, { limit = Infinity, dryRun = false, o
       return;
     }
   }
-  const { via, codes: posts, rows: noteRows = [] } = await replyCandidatePosts(settings, target);
+  const { via, codes: posts, rows: noteRows = [], authors = {} } = await replyCandidatePosts(settings, target);
 
   let posted = 0;
   let seen = 0;
@@ -2295,7 +2605,24 @@ async function runCommentReplies(settings, { limit = Infinity, dryRun = false, o
     if (await stopRequested()) return summary();
     if (posted >= limit) break;
 
-    if (!(await goToRoute("post", [code], 9000, target))) return summary();
+    /**
+     * ⚠ NOT FROM /activity, WHEN THE NOTIFICATION HAD NO LINK TO THE POST.
+     *
+     * `openPostByCode` falls back to the notifications list, which is right on
+     * Instagram and exactly wrong here: the Threads row that told us about the
+     * reply is the one row with no post href, so the retry searches the single
+     * page guaranteed not to contain it — "no link to post C7aBcDeFgHi on this
+     * page", and a real reply sits unanswered. The author's profile is a list
+     * that does have it.
+     *
+     * A failure is a SKIP, not the end of the pass, for the same reason as in
+     * `runComments`: the next candidate may well be openable.
+     */
+    const backTo = authors[code] ? { route: "profile", args: [authors[code]] } : null;
+    if (!(await openPostByCode(code, 9000, target, { backTo }))) {
+      await log("info", `comment replies: could not open ${code} — skipping it`);
+      continue;
+    }
     const read = await askPage("ft:read-comment-replies", { ownHandle: settings.ownUsername }, target);
     if (!read.ok) {
       await log("error", `comment replies ${code}: ${read.reason}`);
@@ -2419,15 +2746,40 @@ const OUTREACH_DONE = "fluidextension.outreachDone";
  */
 const OUTREACH_UNREACHABLE = "fluidextension.outreachUnreachable";
 
-async function unreachableProfiles() {
-  const { [OUTREACH_UNREACHABLE]: list = [] } = await chrome.storage.local.get(OUTREACH_UNREACHABLE);
+/**
+ * ⚠ PER PLATFORM, because "no Message button" is a fact about a PAGE.
+ *
+ * This was one flat list shared by every platform, and the counters beside it
+ * were already suffixed (`…outreach.instagram`) — so the memo that decides
+ * WHETHER TO TRY was the one thing that leaked across sites. Measured on this
+ * profile: 350 handles in the list, essentially all of them from Instagram,
+ * where outreach failed 100% with "no Message button and no options menu".
+ * Threads is a different site with a different profile layout — `openDm`
+ * dry-ran `ok` on four of four profiles there — and it would have silently
+ * skipped every one of those 350 people without a single page load to justify
+ * it. A skip costs nothing and reports nothing, which is why this never showed
+ * up as a failure.
+ *
+ * Same rule as `counterKey`: append the platform, and leave the legacy
+ * un-suffixed key alone rather than migrate it. Splitting one history across
+ * platforms would either copy Instagram's verdict onto Threads — exactly the
+ * defect — or throw away a list that is still right for Instagram.
+ */
+function outreachKey(base, platformId) {
+  return platformId ? `${base}.${platformId}` : base;
+}
+
+async function unreachableProfiles(platformId = null) {
+  const key = outreachKey(OUTREACH_UNREACHABLE, platformId);
+  const { [key]: list = [] } = await chrome.storage.local.get(key);
   return new Set(list);
 }
 
-async function markUnreachable(handle) {
-  const set = await unreachableProfiles();
+async function markUnreachable(handle, platformId = null) {
+  const key = outreachKey(OUTREACH_UNREACHABLE, platformId);
+  const set = await unreachableProfiles(platformId);
   set.add(handle);
-  await chrome.storage.local.set({ [OUTREACH_UNREACHABLE]: [...set].slice(-2000) });
+  await chrome.storage.local.set({ [key]: [...set].slice(-2000) });
 }
 
 /**
@@ -2442,18 +2794,30 @@ async function markUnreachable(handle) {
 const OUTREACH_MISSES = "fluidextension.outreachMisses";
 const GIVE_UP_AFTER = 3;
 
-async function countMiss(handle) {
-  const { [OUTREACH_MISSES]: map = {} } = await chrome.storage.local.get(OUTREACH_MISSES);
+// Per platform for the same reason as `unreachableProfiles`: a profile that
+// would not open a thread on one site says nothing about another.
+async function countMiss(handle, platformId = null) {
+  const key = outreachKey(OUTREACH_MISSES, platformId);
+  const { [key]: map = {} } = await chrome.storage.local.get(key);
   const n = (map[handle] ?? 0) + 1;
   map[handle] = n;
   // Bounded: only the recent tail matters, and this would grow for ever.
   const keys = Object.keys(map);
   if (keys.length > 2000) for (const k of keys.slice(0, keys.length - 2000)) delete map[k];
-  await chrome.storage.local.set({ [OUTREACH_MISSES]: map });
+  await chrome.storage.local.set({ [key]: map });
   return n;
 }
 
-/** Handles we have already cold-opened, so a second run does not repeat them. */
+/**
+ * Handles we have already cold-opened, so a second run does not repeat them.
+ *
+ * DELIBERATELY NOT per-platform, unlike `unreachableProfiles` beside it. That
+ * one is a fact about a page; this one is a fact about a PERSON — and on
+ * Threads the sign-in IS the Instagram account, so the same persona
+ * cold-opening the same human on both surfaces is one approach repeated, not
+ * two conversations. FluidTalk would file them separately; the person would
+ * not experience them separately.
+ */
 async function outreachDone() {
   const { [OUTREACH_DONE]: list = [] } = await chrome.storage.local.get(OUTREACH_DONE);
   return new Set(list);
@@ -2479,28 +2843,74 @@ async function outreachTargets(limit = 30, target = null) {
     throw new Error(`could not tell which account is signed in — open ${platformNames()}`);
   }
 
-  // The profile page, then a CLICK — the /followers/ URL alone leaves the
-  // modal closed, so navigating there and reading finds nothing for ever.
-  await goToRoute("profile", [settings.ownUsername], 8000, target);
-  const opened = await askPage("ft:open-followers", { ownHandle: settings.ownUsername }, target);
-  if (!opened.ok) return { ok: false, reason: opened.reason, targets: [] };
-  if (!(await abortableSleep(4000))) return { ok: false, reason: "stopped", targets: [] };
-
   const done = await outreachDone();
   const found = [];
+  const keep = (h) => {
+    if (!h) return;
+    if (h.toLowerCase() === settings.ownUsername.toLowerCase()) return;
+    if (done.has(h) || found.includes(h)) return;
+    found.push(h);
+  };
 
-  for (let page = 0; page < 6 && found.length < limit; page += 1) {
-    const res = await askPage("ft:list-followers", {}, target);
-    if (!res.ok) return { ok: false, reason: res.reason, targets: [] };
-    for (const h of res.handles) {
-      if (h.toLowerCase() === settings.ownUsername.toLowerCase()) continue;
-      if (done.has(h) || found.includes(h)) continue;
-      found.push(h);
+  /**
+   * WHICH SOURCE, and why it is a choice rather than "everyone we can find".
+   *
+   * A follower chose us; the author of a post on the home timeline has never
+   * heard of us. They are different acts with different risk, so they are
+   * selectable and default to followers — see `outreachSources`.
+   */
+  const sources = String(settings.outreachSources ?? "followers");
+  const wantFollowers = sources === "followers" || sources === "both";
+  const wantFeed = sources === "feed" || sources === "both";
+  let reached = false;
+
+  if (wantFeed) {
+    // The feed is read, never opened. `ft:read-feed` already drops sponsored
+    // and suggested posts, which is what stops outreach cold-opening an
+    // advertiser.
+    if (await goToRoute("home", [], 9000, target)) {
+      reached = true;
+      for (let pass = 0; pass < 3 && found.length < limit; pass += 1) {
+        const posts = await askPage("ft:read-feed", { limit: 25 }, target).catch(() => []);
+        for (const p of posts ?? []) keep(p.author);
+        // Scrolling costs nothing — no page load, so no re-bootstrap and none
+        // of the route-resolution traffic a navigation brings.
+        const moved = await askPage("ft:scroll-page", { by: 2000 }, target).catch(() => null);
+        if (!moved?.moved) break;
+        if (!(await abortableSleep(1500))) break;
+      }
     }
-    const scrolled = await askPage("ft:scroll-followers", {}, target);
-    if (!scrolled.moved) break;
-    if (!(await abortableSleep(1500))) break;
   }
+
+  if (wantFollowers && found.length < limit) {
+    // The profile page, then a CLICK — the /followers/ URL alone leaves the
+    // modal closed, so navigating there and reading finds nothing for ever.
+    await goToRoute("profile", [settings.ownUsername], 8000, target);
+    const opened = await askPage("ft:open-followers", { ownHandle: settings.ownUsername }, target);
+    if (!opened.ok) {
+      // With both sources asked for, a followers list that will not open is a
+      // partial answer, not a failure — returning `ok:false` here would throw
+      // away feed candidates already in hand.
+      if (!reached) return { ok: false, reason: opened.reason, targets: [] };
+      await log("error", `outreach: could not open the followers list (${opened.reason}) — using the feed only`);
+      return { ok: true, targets: found.slice(0, limit) };
+    }
+    reached = true;
+    if (!(await abortableSleep(4000))) return { ok: false, reason: "stopped", targets: [] };
+
+    for (let page = 0; page < 6 && found.length < limit; page += 1) {
+      const res = await askPage("ft:list-followers", {}, target);
+      if (!res.ok) return { ok: false, reason: res.reason, targets: [] };
+      for (const h of res.handles) keep(h);
+      const scrolled = await askPage("ft:scroll-followers", {}, target);
+      if (!scrolled.moved) break;
+      if (!(await abortableSleep(1500))) break;
+    }
+  }
+
+  // Neither source was asked for, or neither could be reached. Saying so beats
+  // answering "no candidates", which reads as an empty account.
+  if (!reached) return { ok: false, reason: `no usable outreach source (${sources})`, targets: [] };
   return { ok: true, targets: found.slice(0, limit) };
 }
 
@@ -2518,7 +2928,16 @@ async function outreachTargets(limit = 30, target = null) {
  * EMPTY. That last check is what stops outreach walking into an existing
  * conversation and cold-opening somebody mid-chat.
  */
-async function runOutreach(settings, target = null) {
+/**
+ * `onlyHandle` / `limit` / `dryRun` exist for the same reason `runComments` has
+ * them: this is the one pass that writes to somebody who never wrote to us, and
+ * before today the only way to exercise it was to start a sweep and let it
+ * message whoever came first. `onlyHandle` aims it at one account you control,
+ * `limit` caps the sends below the hourly budget, and `dryRun` stops after the
+ * character has written the opener — the thread is opened but nothing is sent,
+ * which is not a message and reaches nobody.
+ */
+async function runOutreach(settings, target = null, { onlyHandle = null, limit = Infinity, dryRun = false } = {}) {
   // Check the budget BEFORE gathering candidates. Gathering is the expensive
   // half — it loads a feed and scrolls it, or walks the followers list — and
   // with the run now looping every ninety seconds, doing that with nothing left
@@ -2526,7 +2945,10 @@ async function runOutreach(settings, target = null) {
   // about.
   {
     const q = await quotaFor("outreach", settings, target?.platform.id);
-    if (q.remaining <= 0) {
+    // A dry run spends nothing, so a spent budget must not block it — same rule
+    // as the comments pass, and the same reason: that is the button you press
+    // precisely when the budget is gone and you want to see what it would do.
+    if (!dryRun && q.remaining <= 0) {
       await log("info", `outreach: skipping this cycle — ${quotaSummary(q)}`);
       return;
     }
@@ -2539,12 +2961,30 @@ async function runOutreach(settings, target = null) {
   // Handles whose profile offers no way to message us are skipped without a
   // page load. A profile that has no Message button does not grow one, and
   // every one of these used to be re-opened on every cycle for ever.
-  const unreachable = await unreachableProfiles();
-  const fresh = targets.filter((h) => !unreachable.has(h));
+  const unreachable = await unreachableProfiles(target?.platform.id);
+  // Two filters, counted separately — the log below reports how many were
+  // dropped as unmessageable, and folding `onlyHandle` into that number made a
+  // run aimed at one account report the other eight as "no way to message
+  // them", which is a sentence about THEIR profiles and was not true of any of
+  // them.
+  const reachable = targets.filter((h) => !unreachable.has(h));
+  const fresh = reachable.filter((h) => !onlyHandle || h.toLowerCase() === String(onlyHandle).toLowerCase());
+  if (onlyHandle && !fresh.length) {
+    await log("error", `outreach: @${onlyHandle} is not among the ${reachable.length} reachable candidate(s) this pass found`);
+    return;
+  }
+  // Name the SOURCE. "12 followers not yet opened" while the candidates came
+  // off the home feed is the kind of log line that sends the next person
+  // looking in the wrong place for an account they never followed.
+  const sourceLabel =
+    { followers: "follower(s)", feed: "feed author(s)", both: "candidate(s) (followers + feed)" }[
+      String(settings.outreachSources ?? "followers")
+    ] ?? "candidate(s)";
   await log(
     "info",
-    `outreach: ${targets.length} follower(s) not yet opened` +
-      `${targets.length - fresh.length ? `, ${targets.length - fresh.length} with no way to message them — skipped` : ""}`,
+    `outreach: ${targets.length} ${sourceLabel} not yet opened` +
+      `${targets.length - reachable.length ? `, ${targets.length - reachable.length} with no way to message them — skipped` : ""}` +
+      `${onlyHandle ? `, aimed at @${onlyHandle} only` : ""}`,
   );
 
   /**
@@ -2562,6 +3002,7 @@ async function runOutreach(settings, target = null) {
    * neither is fixed by trying forty-five more.
    */
   let misses = 0;
+  let posted = 0;
   const MAX_MISSES = 5;
 
   for (const handle of fresh) {
@@ -2591,7 +3032,12 @@ async function runOutreach(settings, target = null) {
       // Remembered so this profile is never loaded again. Only for the "no way
       // to message them" answer — a timeout or a half-rendered page is about
       // the moment, not about the account, and must stay retryable.
-      if (/no Message button/i.test(dm.reason ?? "")) await markUnreachable(handle);
+      // The FLAG first, the sentence second — same fix as `uncommentable`, and
+      // the same reason: `/no Message button/i` is Instagram's wording, so
+      // Threads memoed nothing and re-opened refused profiles every cycle.
+      if (dm.unmessageable || /no Message button/i.test(dm.reason ?? "")) {
+        await markUnreachable(handle, target?.platform.id);
+      }
       continue;
     }
     if (!(await abortableSleep(6000))) return;
@@ -2603,8 +3049,8 @@ async function runOutreach(settings, target = null) {
       // — and leaving it uncounted let a run of failures walk straight past
       // the limit by alternating between the two.
       misses += 1;
-      const n = await countMiss(handle);
-      if (n >= GIVE_UP_AFTER) await markUnreachable(handle);
+      const n = await countMiss(handle, target?.platform.id);
+      if (n >= GIVE_UP_AFTER) await markUnreachable(handle, target?.platform.id);
       await log(
         "error",
         `outreach ${handle}: Message did not open a thread${n >= GIVE_UP_AFTER ? ` — ${n} attempts, not trying again` : ""}`,
@@ -2625,6 +3071,36 @@ async function runOutreach(settings, target = null) {
     if (thread.ok && thread.messages.length > 0) {
       await log("info", `outreach ${handle}: skipped — this conversation already exists`);
       await markOutreached(handle);
+      continue;
+    }
+
+    /**
+     * ⚠ A DRY RUN STOPS HERE — asking the character for the opener IS the cold
+     * open, so there is no way to preview the words without spending it.
+     *
+     * The first version of this generated first and skipped only the send,
+     * copying `runComments`. That is safe for a comment, where the text comes
+     * back from `/comments` and nothing is recorded until it is published. It
+     * is NOT safe here: `/triggers` CREATES THE SESSION and writes the opener
+     * into the transcript as an assistant turn, and its `external_event_id` is
+     * a uniqueness constraint. Measured — one dry run left a live session
+     * (`COLD`, one turn, "hey! your profile popped up lol…") for a message
+     * nobody received, and the next run answered "character sent nothing"
+     * because the key was already consumed. The preview would have quietly
+     * eaten the real cold open and left the character believing it had spoken.
+     *
+     * So a dry run proves the PLATFORM path — the followers list, the profile,
+     * the Message control, a real and empty thread — which is the half that
+     * breaks. The words are the character's, and they cost one cold open.
+     */
+    if (dryRun) {
+      await log(
+        "info",
+        `outreach ${handle}: DRY RUN — thread ${where.threadId} is open and empty. ` +
+          `Not asking for an opener: that call is the cold open itself.`,
+      );
+      posted += 1;
+      if (posted >= limit) return;
       continue;
     }
 
@@ -2649,6 +3125,8 @@ async function runOutreach(settings, target = null) {
       if (sent.some((s) => s.ok)) {
         await recordCounter("outreach", target?.platform.id);
         await markOutreached(handle);
+        posted += 1;
+        if (posted >= limit) return;
       }
     } catch (err) {
       await log("error", `outreach ${handle}: ${err.message}`);
@@ -2677,15 +3155,37 @@ const THREADS_KEY = "fluidextension.threads";
 async function readThread(ownHandle, target = null) {
   const thread = await askPage("ft:read", { ownHandle }, target);
   if (thread?.ok && thread.handle && thread.threadId) {
-    const index = await knownThreads();
+    // Recorded under THIS platform — the id means nothing on another one.
+    const platformId = target?.platform.id ?? (await boundPlatformId());
+    const key = outreachKey(THREADS_KEY, platformId);
+    const index = await knownThreads(platformId);
     index[thread.handle.toLowerCase()] = { threadId: thread.threadId, seenAt: Date.now() };
-    await chrome.storage.local.set({ [THREADS_KEY]: index });
+    await chrome.storage.local.set({ [key]: index });
   }
   return thread;
 }
 
-async function knownThreads() {
-  const { [THREADS_KEY]: index = {} } = await chrome.storage.local.get(THREADS_KEY);
+/**
+ * ⚠ PER PLATFORM — A THREAD ID IS ONLY VALID ON THE SITE IT CAME FROM.
+ *
+ * This was one map keyed by handle alone, and on Threads that is guaranteed to
+ * collide: the sign-in IS the Instagram account, so the same person is the same
+ * handle on both. Read live after a Threads conversation was opened:
+ *
+ *     a_lead     -> 900112233445566     (a THREADS id, overwriting Instagram's)
+ *     another.lead  -> 17800112233445566   (an INSTAGRAM id, still there)
+ *
+ * Follow-ups navigate by this id, so each of those sends the pass to
+ * `instagram.com/direct/t/<threads id>/` or `threads.com/messages/t/<instagram
+ * id>/`. The `landed` check catches it — `ft:where` reports a different id and
+ * the pass logs "could not open the thread" — so nobody is messaged in the
+ * wrong conversation, but follow-ups simply stop working for every lead who
+ * exists on both, silently, and the failure names the thread rather than the
+ * ledger.
+ */
+async function knownThreads(platformId = null) {
+  const key = outreachKey(THREADS_KEY, platformId);
+  const { [key]: index = {} } = await chrome.storage.local.get(key);
   return index;
 }
 
@@ -2720,7 +3220,10 @@ async function goTo(url, waitMs = 8000, target = null) {
   // then be against a stale URL and quietly never match.
   const current = await chrome.tabs.get(here.tab.id).then((t) => t.url, () => here.tab.url);
   const sameHash = url.includes("#") || (current ?? "").includes("#");
-  if (!sameHash && current === url) {
+  // ⚠ SKIPPING IS ONLY AN OPTIMISATION WHERE THE PAGE KEEPS ITSELF CURRENT.
+  // A platform that never re-renders in place (Threads) gets nothing but a
+  // stale snapshot out of it, cycle after cycle — see `rerenderOnRevisit`.
+  if (!sameHash && current === url && !here.platform.rerenderOnRevisit) {
     await log("info", `already on ${url.replace(here.platform.origin, "")} — not reloading it`);
     return abortableSleep(400);
   }
@@ -2771,19 +3274,62 @@ async function sweepRequests(settings, target = null) {
       return;
     }
     if (settings.maxThreadAgeDays > 0) {
-      const age = ageDaysFromLabel(row.label);
+      // The stamp is in the row's TEXT, which is not `label` on every platform.
+      const age = ageDaysFromLabel(rowText(row));
       if (age !== null && age > settings.maxThreadAgeDays) continue;
     }
 
-    const opened = await askPage("ft:open-thread", { label: row.label }, target);
-    if (!opened.clicked) continue;
-    if (!(await abortableSleep(5000))) return;
+    /**
+     * ⚠ NAVIGATE WHEN THE ROW HAS AN ID; CLICKING ONE IS WHAT LOOKED BROKEN.
+     *
+     * A Threads requests row is a real anchor to `/messages/t/<id>/`, and
+     * clicking it lands somewhere with no composer, no Accept and no thread id
+     * — which is why `requests` was written off as "the folder reads but a row
+     * does not open into anything". Going to the address instead lands on a
+     * working request, and navigating by id proves itself where a click can
+     * only prove that something changed.
+     */
+    let landed = false;
+    if (row.threadId) {
+      if (await goToRoute("thread", [row.threadId], 9000, target)) {
+        const where = await askPage("ft:where", {}, target);
+        landed = where.threadId === row.threadId;
+      }
+      if (!landed) {
+        await log("error", `requests: could not open ${rowText(row).slice(0, 30)}`);
+        continue;
+      }
+    } else {
+      const opened = await askPage("ft:open-thread", { label: row.label }, target);
+      if (!opened.clicked) continue;
+      if (!(await abortableSleep(5000))) return;
+      landed = true;
+    }
 
     const result = await askPage("ft:accept-request", { dryRun: false }, target);
     if (result.ok) {
       await recordCounter("request", target?.platform.id);
-      await log("info", `accepted request from ${row.label.slice(0, 30)} → ${result.folder}`);
+      await log("info", `accepted request from ${rowText(row).slice(0, 30)}${result.folder ? ` → ${result.folder}` : ""}`);
       if (!(await abortableSleep(2500))) return;
+
+      /**
+       * ⚠ ACCEPTING DOES NOT TURN THE PAGE INTO A NORMAL THREAD — on a platform
+       * that re-renders nothing, it cannot. The request view has Accept, Block
+       * and Delete and NO COMPOSER, and it still has none a moment after the
+       * click, so the answer below was typed into a thread that could not take
+       * it: "third.lead: bubble 1 did not appear in the thread", nothing
+       * delivered, on a request that HAD been accepted. Navigating to the same
+       * thread afterwards gives a composer and the identical send lands first
+       * time — measured, 2/2 delivered and confirmed.
+       *
+       * Only where the platform says so. Instagram's accepted request is usable
+       * on the spot, and a needless reload there is a page load this pass has
+       * been beaten up for before.
+       */
+      if (target?.platform.rerenderOnRevisit && row.threadId) {
+        await goToRoute("thread", [row.threadId], 9000, target);
+        if (!(await abortableSleep(1500))) return;
+      }
 
       // Answer it HERE, while we are standing in the thread. Leaving it to the
       // inbox pass was the other half of the bug: that pass takes its thread
@@ -2802,7 +3348,7 @@ async function sweepRequests(settings, target = null) {
     } else {
       // Refusing is the designed outcome when the controls are ambiguous —
       // say so, because silence here would look like "no requests".
-      await log("error", `request ${row.label.slice(0, 25)}: ${result.reason}`);
+      await log("error", `request ${rowText(row).slice(0, 25)}: ${result.reason}`);
     }
     await goToRoute("requests", [], 7000, target);
   }
@@ -2827,8 +3373,20 @@ const AGE_UNITS = [
   { re: /^(rok|lat|lata|y|yr|years?)$/i, days: 365 },
 ];
 
+/**
+ * What a reader sees on an inbox row, wherever that platform puts it.
+ *
+ * Instagram's `label` IS the row text; Threads' `label` is the row's index (its
+ * rows carry no id until opened, so `ft:open-thread` needs something it can
+ * address) and the text is in `title`. Anything matching a handle or reading
+ * the "· 1 tydz." stamp wants this, not `label`.
+ */
+function rowText(row) {
+  return String(row?.title ?? row?.label ?? "");
+}
+
 function ageDaysFromLabel(label) {
-  const m = label.match(/·\s*(\d+)\s*([\p{L}.]+)/u);
+  const m = String(label ?? "").match(/·\s*(\d+)\s*([\p{L}.]+)/u);
   if (!m) return null;
   const unit = m[2].replace(/\.+$/, "");
   const hit = AGE_UNITS.find((u) => u.re.test(unit));
@@ -2904,12 +3462,12 @@ async function runCycle(target = null, n = 1, { only = null } = {}) {
         await log("info", "sweep stopped");
         break;
       }
-      await setSweep({ current: row.label.slice(0, 40) }, target?.platform.id);
+      await setSweep({ current: rowText(row).slice(0, 40) }, target?.platform.id);
 
       // Age filter, decided from the row itself so an over-old thread is never
       // even opened — opening it would mark it read for nothing.
       if (settings.maxThreadAgeDays > 0) {
-        const age = ageDaysFromLabel(row.label);
+        const age = ageDaysFromLabel(rowText(row));
         if (age !== null && age > settings.maxThreadAgeDays) {
           await bumpSweep("skipped", target?.platform.id);
           continue;
@@ -2939,7 +3497,7 @@ async function runCycle(target = null, n = 1, { only = null } = {}) {
       // proof, not a weaker one.
       const where = await askPage("ft:where", {}, target);
       if (!where.threadId || (where.threadId === opened.before && !opened.alreadyOpen)) {
-        await log("error", `could not open "${row.label.slice(0, 30)}" — still on ${opened.before ?? "no thread"}`);
+        await log("error", `could not open "${rowText(row).slice(0, 30)}" — still on ${opened.before ?? "no thread"}`);
         await bumpSweep("skipped", target?.platform.id);
         continue;
       }
@@ -2957,7 +3515,7 @@ async function runCycle(target = null, n = 1, { only = null } = {}) {
         // that skipped everything for a deliberate reason has to be readable as
         // such. `no_messages` is left silent: it is the ordinary case.
         if (thread.reason && thread.reason !== "no_messages") {
-          await log("info", `${row.label.slice(0, 30)}: skipped — ${thread.reason}`);
+          await log("info", `${rowText(row).slice(0, 30)}: skipped — ${thread.reason}`);
         }
         await bumpSweep("skipped", target?.platform.id);
         continue; // nothing owed: the last word is ours, or it did not load
@@ -2973,8 +3531,8 @@ async function runCycle(target = null, n = 1, { only = null } = {}) {
       // matching their text in any locale: a thread we cannot answer is never
       // owed a reply, whatever the notice says.
       if (thread.canSend === false) {
-        if (thread.handle) await markUnreachable(thread.handle);
-        await log("info", `${thread.handle ?? row.label.slice(0, 30)}: skipped — they have not accepted the request, so nothing can be sent`);
+        if (thread.handle) await markUnreachable(thread.handle, target?.platform.id);
+        await log("info", `${thread.handle ?? rowText(row).slice(0, 30)}: skipped — they have not accepted the request, so nothing can be sent`);
         await bumpSweep("skipped", target?.platform.id);
         continue;
       }
@@ -3187,6 +3745,24 @@ const WAKE_TIMEOUT_MS = 45_000;
 const READY_PROBE_MS = 10_000;
 
 async function probeReady(target) {
+  /**
+   * ⚠ A SUSPENDED TAB CANNOT ANSWER, AND THE BROWSER WILL TELL YOU SO.
+   *
+   * `targetFor` already steps over a sleeping tab when a platform has several.
+   * With only ONE it cannot — there is nothing else to pick — so the probe used
+   * to spend its whole deadline on a question that was already answered, and
+   * every later `askPage` to that tab then waited the full two-minute call
+   * timeout. The platform simply goes quiet, which is the worst shape a failure
+   * can take.
+   *
+   * Read FRESH rather than trusting the tab object this was resolved with: it
+   * may be seconds old, and treating an awake tab as asleep would send the heal
+   * off to navigate a page that was working — on Instagram that is exactly the
+   * traffic that earns a 429.
+   */
+  const asleep = await chrome.tabs.get(target.tab.id).then((t) => Boolean(t.frozen || t.discarded), () => false);
+  if (asleep) return { alive: false, ready: false, error: "the browser has put this tab to sleep" };
+
   const answer = await Promise.race([
     askPage("ft:ready", {}, target).then(
       (r) => ({ alive: true, ready: Boolean(r?.ready), why: r?.why, needsHuman: Boolean(r?.needsHuman) }),
@@ -3745,6 +4321,33 @@ function releasePlatform(platformId) {
   platformBusy.delete(platformId);
 }
 
+/**
+ * Hold the tab for a pass started from the PANEL.
+ *
+ * ⚠ THE SWEEP TAKES THIS LOCK AND THE PANEL'S OWN RUNNERS DID NOT, so the
+ * auto-reply watcher — which claims it, finds it free, and then drives the same
+ * tab — ran straight through the middle of them. Observed on a real outreach
+ * run: the pass opened @a_lead's conversation to check whether it already
+ * existed, that fired `onThreadChanged`, and while the watcher was generating
+ * and sending a reply there the pass had already navigated on to the next
+ * profile. TWO MESSAGES WERE LOST — the watcher's reply to a_lead and the cold
+ * open to third.lead — both logged as "bubble 1 did not appear in the thread"
+ * and neither delivered, while an isolated send into the same thread a minute
+ * later worked first time.
+ *
+ * Same contract as the sweep's: held for the WHOLE pass, because every step of
+ * open → read → generate → send assumes the conversation has not moved.
+ */
+async function drivingTheTab(what, fn) {
+  const platformId = await boundPlatformId();
+  if (!claimPlatform(platformId)) throw new Error(`another run is already driving this tab — ${what} did not start`);
+  try {
+    return await fn();
+  } finally {
+    releasePlatform(platformId);
+  }
+}
+
 async function onThreadChanged(thread, tab = null) {
   // Which platform this is about, decided by the TAB THAT FIRED. Reading the
   // active platform instead is how a WhatsApp message could be answered by
@@ -3861,6 +4464,38 @@ async function onThreadChanged(thread, tab = null) {
  * So it only marks the rows as worth looking at and wakes the loop, which opens
  * them through the same path a scheduled cycle uses.
  */
+/**
+ * The Threads doorbell rang: something moved on the realtime socket.
+ *
+ * It carries NO content — see `threads-mainworld.js` for why that is deliberate
+ * — so this cannot say who wrote or even that anybody did. All it does is cut
+ * the idle gap short so the run's next cycle happens now instead of in a couple
+ * of minutes. A false ring therefore costs one navigation, which is the whole
+ * reason the signal is allowed to be imprecise.
+ *
+ * ⚠ ONLY WHILE A RUN IS GOING, by the owner's explicit choice. The same gates
+ * as `onListChanged`, for the same reason: this makes the extension act without
+ * a click, so every switch that governs acting has to govern it too. With
+ * nothing running the ring is dropped rather than queued — by the time a run
+ * starts, the inbox is read from scratch anyway.
+ */
+async function onRealtime(tab = null) {
+  const platform = platformForUrl(tab?.url);
+  if (!platform) return;
+  if (platform.id !== (await boundPlatformId())) return;
+  if (!platformConfigured(await loadStore(), platform.id)) return;
+  const settings = await currentSettings(tab ? { tab, platform } : null);
+  if (!settings.autoSend) return;
+  const s = await sweepState();
+  if (!s.running || s.stopping) return;
+  // Nothing to do if the cycle is already awake — it will read the inbox when
+  // it gets there, and a log line per frame would bury the run's own story.
+  if (hasPendingWork(platform.id)) return;
+
+  noteWake(platform.id);
+  await log("info", `${platform.label}: the page says something arrived — looking now`);
+}
+
 async function onListChanged(peers, tab = null) {
   // THE TAB THAT FIRED, for the same reason as `onThreadChanged`: each
   // platform's watcher runs in its own page.
@@ -4283,9 +4918,15 @@ const handlers = {
     settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
     await setSweep({ running: true, stopping: false, done: 0, skipped: 0, sent: 0, current: null });
     try {
-      // No target: this is a panel button, so it means "the platform I am
-      // looking at" — the active tab, exactly as before.
-      await runComments(settings);
+      /**
+       * "The platform I am looking at" is right, and OMITTING THE TARGET IS NOT
+       * HOW YOU SAY IT. `askPage` does fall back to `boundTarget()` for the
+       * page, which is what the old comment here was about — but every ledger
+       * and quota keys off `target?.platform.id`, so leaving it out silently
+       * moves them to the shared, un-suffixed keys. `boundTarget()` names the
+       * same tab and keeps the per-platform bookkeeping intact.
+       */
+      await runComments(settings, { target: await boundTarget() });
     } finally {
       await setSweep({ running: false, stopping: false, current: null });
     }
@@ -4299,7 +4940,10 @@ const handlers = {
   "ft:read-profile-posts": ({ limit }) => askPage("ft:read-profile-posts", { limit }),
   "ft:read-post": async () =>
     askPage("ft:read-post", { ownHandle: (await currentSettings()).ownUsername }),
-  "ft:post-comment": ({ text }) => askPage("ft:post-comment", { text }),
+  // `ownHandle` for the same reason the sweep sends it: without it a publish is
+  // confirmed by finding ANY block containing our text.
+  "ft:post-comment": async ({ text }) =>
+    askPage("ft:post-comment", { text, ownHandle: (await currentSettings()).ownUsername }),
   /** Are comments even switched on for this character? Fail-closed and OFF by default. */
   "ft:comment-status": async () => {
     const settings = await currentSettings();
@@ -4309,7 +4953,51 @@ const handlers = {
     });
     return { enabled: !r.ignore_reason, ignore_reason: r.ignore_reason ?? null, explain: r.explain ?? null };
   },
+  /**
+   * Run the requests pass on its own — the counterpart of `ft:run-comments`
+   * and `ft:run-outreach`, and the only one of the five that had no runner.
+   * Accepting a request lets somebody into the inbox, so being able to exercise
+   * it once, deliberately, is worth more here than anywhere else.
+   */
+  "ft:run-requests": async () => {
+    const settings = await currentSettings();
+    const missing = missingConfig(settings);
+    if (missing.length) throw new Error(`configure ${missing.join(" and ")} first`);
+    settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
+    const target = await boundTarget();
+    return drivingTheTab("requests", async () => {
+      await sweepRequests(settings, target);
+      return { ok: true };
+    });
+  },
   "ft:outreach-preview": () => outreachTargets(),
+  /**
+   * Run the outreach pass on its own — the counterpart of `ft:run-comments`.
+   *
+   * Until now the only way to exercise this was to start a whole sweep, which
+   * cold-opens whoever the followers list happens to offer first. `onlyHandle`
+   * aims it at one account you control, `limit` caps the sends, and `dryRun`
+   * stops after the character has written the opener.
+   */
+  "ft:run-outreach": async ({ onlyHandle = null, limit = 1, dryRun = false } = {}) => {
+    const settings = await currentSettings();
+    const missing = missingConfig(settings);
+    if (missing.length) throw new Error(`configure ${missing.join(" and ")} first`);
+    settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
+    /**
+     * ⚠ THE TARGET IS WHAT MAKES THE PER-PLATFORM KEYS PER-PLATFORM. Passing
+     * null here sends `unreachableProfiles`, `countMiss` and `recordCounter`
+     * back to the legacy un-suffixed keys — so a panel-started run reads
+     * Instagram's unmessageable list again and its sends never reach the
+     * Threads budget. Caught in a live run: the log said "1 with no way to
+     * message them" while `outreachUnreachable.threads` was empty, and a
+     * delivered DM left `outreach.threads` on zero.
+     */
+    const target = await boundTarget();
+    return drivingTheTab("outreach", () =>
+      runOutreach(settings, target, { onlyHandle, limit, dryRun }).then(() => ({ ok: true, onlyHandle, limit, dryRun })),
+    );
+  },
   /**
    * Run the follow-up pass on its own.
    *
@@ -4336,7 +5024,16 @@ const handlers = {
     if (missing.length) throw new Error(`configure ${missing.join(" and ")} first`);
     settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
     const use = source ? { ...settings, commentSources: source } : settings;
-    return (await runComments(use, { limit, dryRun })) ?? { candidates: 0, posted: 0 };
+    // Holds the tab for the whole pass — see `drivingTheTab`. This one walks
+    // the feed and opens posts, so the auto-reply watcher navigating underneath
+    // it is the same collision. The TARGET is passed for the same reason as in
+    // `ft:run-outreach`: without it the quota and the commented memo use the
+    // legacy un-suffixed keys and this platform's budget is never touched.
+    const target = await boundTarget();
+    return drivingTheTab(
+      "comments",
+      async () => (await runComments(use, { limit, dryRun, target })) ?? { candidates: 0, posted: 0 },
+    );
   },
   /**
    * Run ONLY the comment-reply pass, same reasoning as `ft:run-comments`.
@@ -4353,8 +5050,20 @@ const handlers = {
     const missing = missingConfig(settings);
     if (missing.length) throw new Error(`configure ${missing.join(" and ")} first`);
     settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
-    return (
-      (await runCommentReplies(settings, { limit, dryRun, onlyHandle })) ?? { via: "none", posts: 0, replies: 0, posted: 0 }
+    // Target and tab lock, like every other panel-started pass — see
+    // `drivingTheTab`. Without the target this reads `commentTexts` and the
+    // quota from the shared keys, which is how the reply-code recovery found an
+    // empty ledger and answered "0 post(s) to open" with a reply on screen.
+    const target = await boundTarget();
+    return drivingTheTab(
+      "comment replies",
+      async () =>
+        (await runCommentReplies(settings, { limit, dryRun, onlyHandle, target })) ?? {
+          via: "none",
+          posts: 0,
+          replies: 0,
+          posted: 0,
+        },
     );
   },
   /** What the notification list says without acting on it. */
@@ -4397,8 +5106,17 @@ const handlers = {
     const missing = missingConfig(settings);
     if (missing.length) throw new Error(`configure ${missing.join(" and ")} first`);
     settings.ownUsername = (await resolveOwnHandle()) || settings.ownUsername;
-    await goToRoute("inbox", [], 8000);
-    return (await runFollowups(settings, { onlyHandle, dryRun })) ?? { queued: 0, sent: 0 };
+    // Same tab lock as the other panel-started passes — see `drivingTheTab` —
+    // and the same TARGET, without which `followupHistory`, `recordFollowup`
+    // and `knownThreads` all fall back to the shared keys. Caught live: a
+    // follow-up delivered on Threads wrote `count: 1` into the global history
+    // while `followups.threads` stayed empty, so the per-platform ladder this
+    // pass is supposed to climb was never touched.
+    const target = await boundTarget();
+    return drivingTheTab("follow-ups", async () => {
+      await goToRoute("inbox", [], 8000, target);
+      return (await runFollowups(settings, { onlyHandle, dryRun, target })) ?? { queued: 0, sent: 0 };
+    });
   },
   // dryRun defaults TRUE here: this pass-through exists to inspect the accept
   // control, and a diagnostic that accepts a stranger by default is a trap.
@@ -4455,6 +5173,11 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
     onThreadChanged(msg.thread, sender?.tab ?? null);
     // Let the panel repaint from the same event rather than polling the page.
     chrome.runtime.sendMessage({ type: "ft:thread-updated", thread: msg.thread }).catch(() => {});
+    return false;
+  }
+
+  if (msg?.type === "ft:realtime") {
+    onRealtime(sender?.tab ?? null);
     return false;
   }
 

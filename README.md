@@ -3,9 +3,9 @@
 [![CI](https://github.com/Trebuu/fluidextension/actions/workflows/ci.yml/badge.svg)](https://github.com/Trebuu/fluidextension/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A Chrome (MV3) extension that answers direct messages on **Instagram, Telegram
-Web and WhatsApp Web** with a [FluidTalk](https://talk.fluidvip.com) character,
-driven from a side panel.
+A Chrome (MV3) extension that answers direct messages on **Instagram, Threads,
+Telegram Web and WhatsApp Web** with a [FluidTalk](https://talk.fluidvip.com)
+character, driven from a side panel.
 
 ![The FluidExtension side panel answering an Instagram DM](docs/hero.png)
 
@@ -26,9 +26,10 @@ own. Read this table before you point it at an account you care about.
 | `newThreadsPerHour` | 5 | caps *first* replies into never-answered threads (see below) |
 
 Not every platform has every capability — the set is declared per platform in
-`src/lib/platforms.js`. **Instagram has all of them; Telegram Web and WhatsApp
-Web have DMs and follow-ups only**, so outreach, requests and both comment
-features are Instagram-only in practice.
+`src/lib/platforms.js`. **Instagram and Threads have all six; Telegram Web has
+DMs and follow-ups; WhatsApp Web has DMs only** — a single unsolicited follow-up
+cost a linked WhatsApp session on 2026-09-15, so it is blocked there with the
+reason recorded in `blockedCapabilities`.
 
 **Two of these contact people who never contacted us**: `outreachEnabled` (a
 cold DM) and `commentsEnabled` (a public comment on a stranger's post). Turn
@@ -39,7 +40,7 @@ the local switch alone is not enough to make it write.
 ### Running this against a real account
 
 Automating direct messages is against the terms of service of Instagram,
-WhatsApp and Telegram. Accounts doing it get rate-limited, restricted or banned,
+Threads, WhatsApp and Telegram. Accounts doing it get rate-limited, restricted or banned,
 and the platforms change their DOM without warning — which is a defect class this
 code handles but cannot eliminate. **You are responsible for what the account you
 attach it to does to other people.** Use it on accounts you own and can afford to
@@ -224,6 +225,27 @@ appears as an outgoing row before reporting success.
 When any of this breaks, **Settings → Diagnose page** reports what each selector
 actually matched, so a redesign is diagnosable from the panel instead of a stack
 trace.
+
+### Threads is not Instagram with a different logo
+
+Threads shares Meta's front-end conventions, so the adapter is shaped the same —
+and then differs in three ways that each produced a live defect:
+
+- **It does not re-render what is already on screen.** Navigating to a thread you
+  are already looking at leaves the old DOM in place, so a pass that "went" to a
+  conversation can read the previous one. The adapter declares
+  `rerenderOnRevisit`, and the worker re-navigates after any state change it
+  needs to see (accepting a request, for example).
+- **Geometry decides direction less reliably.** Incoming and outgoing bubbles can
+  share a right edge at some window widths. `sendBubble` therefore prefers
+  finding our own text as an outgoing row, and falls back to *the composer having
+  emptied itself* — which we cannot do programmatically against Lexical, so only
+  Threads accepting the message explains it. Under-reporting a send is the
+  expensive direction: the worker would send it again.
+- **A post body is bounded by its action bar, not by its container.** Reading the
+  text above the like/reply/repost row, with nested controls and `aria-hidden`
+  subtrees stripped, is what keeps "Translate", the author badge and the composer
+  placeholder out of what the character is told the lead said.
 
 ## Replies to our comments
 
